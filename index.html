@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <meta name="description" content="PWA-камера для создания чёрно-белых фотографий" />
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+
+  <title>Чёрно-белая камера</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --background: #0f0f0f;
+      --panel: #1b1b1b;
+      --text: #f5f5f5;
+      --muted: #ababab;
+      --border: #353535;
+      --button: #f5f5f5;
+      --button-text: #111111;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--background);
+      color: var(--text);
+    }
+
+    main {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.7rem, 5vw, 2.6rem);
+    }
+
+    .description,
+    #status {
+      color: var(--muted);
+    }
+
+    .viewer {
+      position: relative;
+      margin-top: 20px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: #000;
+      aspect-ratio: 3 / 4;
+    }
+
+    video,
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    canvas {
+      display: none;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    button,
+    .file-label {
+      min-height: 48px;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      background: var(--button);
+      color: var(--button-text);
+    }
+
+    button.secondary,
+    .file-label {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    #status {
+      min-height: 24px;
+      margin-top: 14px;
+    }
+
+    .tip {
+      margin-top: 18px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 520px) {
+      main {
+        padding: 14px;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Чёрно-белая камера</h1>
+    <div class="description">
+      Сделайте фотографию камерой или выберите изображение с устройства.
+    </div>
+
+    <section class="viewer" aria-label="Предпросмотр камеры и фотографии">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+    </section>
+
+    <div class="controls">
+      <button id="startButton" type="button">Включить камеру</button>
+      <button id="captureButton" type="button" disabled>Сделать фото</button>
+
+      <label class="file-label" for="fileInput">
+        Выбрать фото
+      </label>
+      <input id="fileInput" type="file" accept="image/*" capture="environment" />
+
+      <button id="downloadButton" type="button" disabled>
+        Сохранить фото
+      </button>
+
+      <button id="retakeButton" class="secondary" type="button" disabled>
+        Снять заново
+      </button>
+
+      <button id="switchButton" class="secondary" type="button">
+        Сменить камеру
+      </button>
+
+      <button id="installButton" class="secondary" type="button" hidden>
+        Установить приложение
+      </button>
+    </div>
+
+    <div id="status" role="status" aria-live="polite"></div>
+
+    <div class="tip">
+      Изображение обрабатывается прямо на устройстве и никуда не загружается.
+      Для работы камеры сайт должен быть открыт через HTTPS или localhost.
+    </div>
+  </main>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+
+    const startButton = document.getElementById("startButton");
+    const captureButton = document.getElementById("captureButton");
+    const downloadButton = document.getElementById("downloadButton");
+    const retakeButton = document.getElementById("retakeButton");
+    const switchButton = document.getElementById("switchButton");
+    const installButton = document.getElementById("installButton");
+    const fileInput = document.getElementById("fileInput");
+    const status = document.getElementById("status");
+
+    let mediaStream = null;
+    let facingMode = "environment";
+    let deferredInstallPrompt = null;
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    async function stopCamera() {
+      if (!mediaStream) return;
+
+      mediaStream.getTracks().forEach((track) => track.stop());
+      mediaStream = null;
+      video.srcObject = null;
+      captureButton.disabled = true;
+    }
+
+    async function startCamera() {
+      try {
+        await stopCamera();
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Камера не поддерживается этим браузером.");
+        }
+
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        });
+
+        video.srcObject = mediaStream;
+        await video.play();
+
+        video.style.display = "block";
+        canvas.style.display = "none";
+
+        captureButton.disabled = false;
+        retakeButton.disabled = true;
+        setStatus("Камера готова.");
+      } catch (error) {
+        console.error(error);
+        setStatus(
+          "Не удалось открыть камеру. Разрешите доступ к камере или выберите фото с устройства."
+        );
+      }
+    }
+
+    function convertCanvasToGrayscale() {
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+
+      for (let i = 0; i < pixels.length; i += 4) {
+        const red = pixels[i];
+        const green = pixels[i + 1];
+        const blue = pixels[i + 2];
+
+        // Взвешенное преобразование, близкое к человеческому восприятию яркости.
+        const gray = Math.round(0.299 * red + 0.587 * green + 0.114 * blue);
+
+        pixels[i] = gray;
+        pixels[i + 1] = gray;
+        pixels[i + 2] = gray;
+      }
+
+      context.putImageData(imageData, 0, 0);
+    }
+
+    function showProcessedImage() {
+      video.style.display = "none";
+      canvas.style.display = "block";
+      captureButton.disabled = true;
+      downloadButton.disabled = false;
+      retakeButton.disabled = false;
+      setStatus("Чёрно-белое фото готово.");
+    }
+
+    function capturePhoto() {
+      if (!video.videoWidth || !video.videoHeight) {
+        setStatus("Камера ещё не готова.");
+        return;
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      convertCanvasToGrayscale();
+      showProcessedImage();
+    }
+
+    function loadSelectedImage(file) {
+      if (!file) return;
+
+      if (!file.type.startsWith("image/")) {
+        setStatus("Выберите файл изображения.");
+        return;
+      }
+
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      image.onload = () => {
+        const maxDimension = 2400;
+        const scale = Math.min(
+          1,
+          maxDimension / Math.max(image.naturalWidth, image.naturalHeight)
+        );
+
+        canvas.width = Math.round(image.naturalWidth * scale);
+        canvas.height = Math.round(image.naturalHeight * scale);
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        convertCanvasToGrayscale();
+        showProcessedImage();
+
+        URL.revokeObjectURL(objectUrl);
+      };
+
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setStatus("Не удалось прочитать выбранное изображение.");
+      };
+
+      image.src = objectUrl;
+    }
+
+    function downloadPhoto() {
+      if (!canvas.width || !canvas.height) return;
+
+      canvas.toBlob(
+        async (blob) => {
+          if (!blob) {
+            setStatus("Не удалось подготовить файл.");
+            return;
+          }
+
+          const filename = `black-and-white-${new Date()
+            .toISOString()
+            .replace(/[:.]/g, "-")}.jpg`;
+
+          const file = new File([blob], filename, { type: "image/jpeg" });
+
+          // На поддерживаемых телефонах откроется системное меню сохранения/отправки.
+          if (
+            navigator.canShare &&
+            navigator.canShare({ files: [file] }) &&
+            navigator.share
+          ) {
+            try {
+              await navigator.share({
+                files: [file],
+                title: "Чёрно-белое фото"
+              });
+              setStatus("Открыто системное меню сохранения.");
+              return;
+            } catch (error) {
+              if (error.name !== "AbortError") {
+                console.warn("Share API error:", error);
+              }
+            }
+          }
+
+          // Универсальный вариант для компьютеров и браузеров.
+          const objectUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = objectUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+          setStatus("Файл сохранён в папку загрузок.");
+        },
+        "image/jpeg",
+        0.92
+      );
+    }
+
+    async function retakePhoto() {
+      downloadButton.disabled = true;
+      retakeButton.disabled = true;
+      await startCamera();
+    }
+
+    async function switchCamera() {
+      facingMode = facingMode === "environment" ? "user" : "environment";
+      await startCamera();
+    }
+
+    startButton.addEventListener("click", startCamera);
+    captureButton.addEventListener("click", capturePhoto);
+    downloadButton.addEventListener("click", downloadPhoto);
+    retakeButton.addEventListener("click", retakePhoto);
+    switchButton.addEventListener("click", switchCamera);
+
+    fileInput.addEventListener("change", (event) => {
+      loadSelectedImage(event.target.files?.[0]);
+      event.target.value = "";
+    });
+
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      installButton.hidden = false;
+    });
+
+    installButton.addEventListener("click", async () => {
+      if (!deferredInstallPrompt) return;
+
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+
+      deferredInstallPrompt = null;
+      installButton.hidden = true;
+    });
+
+    window.addEventListener("appinstalled", () => {
+      deferredInstallPrompt = null;
+      installButton.hidden = true;
+      setStatus("Приложение установлено.");
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", async () => {
+        try {
+          await navigator.serviceWorker.register("./service-worker.js");
+        } catch (error) {
+          console.error("Service worker registration failed:", error);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

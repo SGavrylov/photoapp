@@ -1,0 +1,19 @@
+{
+  "name": "Чёрно-белая камера",
+  "short_name": "Ч/Б камера",
+  "description": "Съёмка и сохранение чёрно-белых фотографий",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#111111",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
