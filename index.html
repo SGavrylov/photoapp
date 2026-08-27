@@ -176,24 +176,29 @@
 
     /* vertical variant carousel */
     .frame {
+      position: relative;
       height: 100%;
       border: 3.5px solid var(--border);
       border-radius: 16px;
       background: repeating-linear-gradient(45deg,#111 0 10px,#161616 10px 20px);
-      overflow-y: auto;
-      overflow-x: hidden;
-      scroll-snap-type: y mandatory;
-      scrollbar-width: none;
+      overflow: hidden;
       box-shadow: var(--shadow);
-      touch-action: pan-y;
+      touch-action: pan-x;
     }
-    .frame::-webkit-scrollbar { display: none; }
+
+    .vstack {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      transition: transform .28s cubic-bezier(.22,.61,.36,1);
+      will-change: transform;
+    }
 
     .variant {
+      flex: 0 0 100%;
       height: 100%;
       width: 100%;
-      scroll-snap-align: center;
-      scroll-snap-stop: always;
       display: grid;
       place-items: center;
       overflow: hidden;
@@ -239,20 +244,31 @@
       z-index: 3;
       display: flex;
       flex-direction: column;
-      gap: 7px;
+      gap: 0;
       align-items: center;
-      padding: 7px 5px;
+      padding: 3px 2px;
       border-radius: 999px;
       background: rgba(20,17,13,.4);
       pointer-events: none;
     }
     .variant-rail .vdot {
+      width: 22px; height: 18px;
+      display: grid;
+      place-items: center;
+      background: none;
+      border: 0;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .variant-rail .vdot::before {
+      content: "";
       width: 8px; height: 8px;
       border-radius: 50%;
       background: rgba(255,255,255,.55);
       border: 1px solid rgba(0,0,0,.4);
+      transition: transform .15s;
     }
-    .variant-rail .vdot.on { background: var(--accent-2); transform: scale(1.4); }
+    .variant-rail .vdot.on::before { background: var(--accent-2); transform: scale(1.5); }
     .variant-rail.hidden { display: none; }
 
     .swipe-hint {
@@ -669,13 +685,6 @@
       // restore horizontal scroll to current page (after layout)
       requestAnimationFrame(() => {
         deck.scrollLeft = currentPage * deck.clientWidth;
-        // restore selected variant per page
-        state.pages.forEach((page, i) => {
-          const frame = deck.children[i].querySelector(".frame");
-          if (frame && page.photos.length) {
-            frame.scrollTop = page.selected * frame.clientHeight;
-          }
-        });
       });
     }
 
@@ -695,6 +704,7 @@
       const frame = document.createElement("div");
       frame.className = "frame";
 
+      let vstack = null;
       if (page.photos.length === 0) {
         const ph = document.createElement("div");
         ph.className = "placeholder";
@@ -704,6 +714,8 @@
         ph.addEventListener("click", () => openCamera());
         frame.appendChild(ph);
       } else {
+        vstack = document.createElement("div");
+        vstack.className = "vstack";
         page.photos.forEach((blob) => {
           const v = document.createElement("div");
           v.className = "variant";
@@ -711,8 +723,10 @@
           img.src = urlFor(blob);
           img.alt = "Кадр " + (index + 1);
           v.appendChild(img);
-          frame.appendChild(v);
+          vstack.appendChild(v);
         });
+        vstack.style.transform = "translateY(" + (-page.selected * 100) + "%)";
+        frame.appendChild(vstack);
       }
       wrap.appendChild(frame);
 
@@ -722,6 +736,8 @@
       for (let i = 0; i < page.photos.length; i++) {
         const vd = document.createElement("div");
         vd.className = "vdot" + (i === page.selected ? " on" : "");
+        const vi = i;
+        vd.addEventListener("click", () => setVariant(index, vi));
         rail.appendChild(vd);
       }
       wrap.appendChild(rail);
@@ -774,16 +790,47 @@
       section.appendChild(cap);
       requestAnimationFrame(autoSize);
 
-      // watch variant selection via vertical scroll
-      frame.addEventListener("scroll", () => {
-        if (!page.photos.length) return;
-        const idx = Math.round(frame.scrollTop / frame.clientHeight);
-        if (idx !== page.selected && idx >= 0 && idx < page.photos.length) {
-          page.selected = idx;
-          updateVariantUI(section, page);
-          persist();
-        }
-      }, { passive: true });
+      // vertical swipe to switch takes ("dubli")
+      if (page.photos.length > 1 && vstack) {
+        let startY = 0, startX = 0, curDy = 0, axis = null, active = false;
+        frame.addEventListener("touchstart", (e) => {
+          const t = e.touches[0];
+          startY = t.clientY; startX = t.clientX; curDy = 0; axis = null; active = true;
+          vstack.style.transition = "none";
+        }, { passive: true });
+        frame.addEventListener("touchmove", (e) => {
+          if (!active) return;
+          const t = e.touches[0];
+          const dy = t.clientY - startY, dx = t.clientX - startX;
+          if (axis === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+            axis = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
+          }
+          if (axis === "y") {
+            e.preventDefault();
+            curDy = dy;
+            const h = frame.clientHeight || 1;
+            const min = -(page.photos.length - 1) * h - h * 0.18;
+            const max = h * 0.18;
+            const move = Math.max(min, Math.min(max, -page.selected * h + dy));
+            vstack.style.transform = "translateY(" + move + "px)";
+          }
+        }, { passive: false });
+        const endDrag = () => {
+          if (!active) return;
+          active = false;
+          vstack.style.transition = "";
+          if (axis === "y") {
+            const h = frame.clientHeight || 1;
+            const threshold = Math.min(40, h * 0.12);
+            let idx = page.selected;
+            if (curDy <= -threshold) idx++;
+            else if (curDy >= threshold) idx--;
+            setVariant(index, idx);
+          }
+        };
+        frame.addEventListener("touchend", endDrag, { passive: true });
+        frame.addEventListener("touchcancel", endDrag, { passive: true });
+      }
 
       return section;
     }
@@ -798,6 +845,23 @@
       } else {
         hint.classList.add("hidden");
       }
+    }
+
+    function renderVariant(pageIndex) {
+      const page = state.pages[pageIndex];
+      const section = deck.children[pageIndex];
+      if (!page || !section) return;
+      const vstack = section.querySelector(".vstack");
+      if (vstack) vstack.style.transform = "translateY(" + (-page.selected * 100) + "%)";
+      updateVariantUI(section, page);
+    }
+
+    function setVariant(pageIndex, idx) {
+      const page = state.pages[pageIndex];
+      if (!page || !page.photos.length) return;
+      idx = Math.max(0, Math.min(idx, page.photos.length - 1));
+      if (idx !== page.selected) { page.selected = idx; persist(); }
+      renderVariant(pageIndex);
     }
 
     function renderDots() {
@@ -848,10 +912,6 @@
       const oldSection = deck.children[currentPage];
       const newSection = buildPage(page, currentPage);
       deck.replaceChild(newSection, oldSection);
-      const frame = newSection.querySelector(".frame");
-      requestAnimationFrame(() => {
-        frame.scrollTop = page.selected * frame.clientHeight;
-      });
       toast(page.photos.length > 1 ? "Добавлен дубль " + page.photos.length : "Кадр добавлен");
     }
 
@@ -864,10 +924,6 @@
       persist(true);
       const newSection = buildPage(page, index);
       deck.replaceChild(newSection, deck.children[index]);
-      const frame = newSection.querySelector(".frame");
-      requestAnimationFrame(() => {
-        if (page.photos.length) frame.scrollTop = page.selected * frame.clientHeight;
-      });
       toast("Дубль удалён");
     }
 
@@ -1052,9 +1108,7 @@
         const page = state.pages[currentPage];
         if (page.photos.length > 1) {
           const dir = e.key === "ArrowDown" ? 1 : -1;
-          const frame = deck.children[currentPage].querySelector(".frame");
-          const next = Math.max(0, Math.min(page.selected + dir, page.photos.length - 1));
-          frame.scrollTo({ top: next * frame.clientHeight, behavior: "smooth" });
+          setVariant(currentPage, page.selected + dir);
         }
       }
     });
