@@ -1,4 +1,4 @@
-const CACHE_NAME = "photocomic-v1";
+const CACHE_NAME = "photocomic-0.7";
 
 const APP_FILES = [
   "./",
@@ -28,26 +28,39 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  const request = event.request;
+  if (request.method !== "GET") return;
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
+  const accept = request.headers.get("accept") || "";
+  const isHTML = request.mode === "navigate" || accept.includes("text/html");
 
-      return fetch(event.request)
+  // HTML: network-first so a fresh deploy shows up as soon as you're online.
+  if (isHTML) {
+    event.respondWith(
+      fetch(request)
         .then((networkResponse) => {
-          // Cache successful, cacheable responses (app shell + Google Fonts).
-          // Skip opaque/error responses so a broken entry never poisons the cache.
+          const responseCopy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy)).catch(() => {});
+          return networkResponse;
+        })
+        .catch(() => caches.match(request).then((r) => r || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  // Everything else: cache-first (shell, icon, fonts).
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
+      return fetch(request)
+        .then((networkResponse) => {
           if (networkResponse && networkResponse.ok && networkResponse.type !== "opaque") {
             const responseCopy = networkResponse.clone();
-            caches
-              .open(CACHE_NAME)
-              .then((cache) => cache.put(event.request, responseCopy))
-              .catch(() => {});
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy)).catch(() => {});
           }
           return networkResponse;
         })
-        .catch(() => cachedResponse);
+        .catch(() => undefined);
     })
   );
 });
