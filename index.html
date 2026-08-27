@@ -1340,11 +1340,19 @@
       let epName = (settings.apiName || "").trim();
       let ep = epName && named[epName];
       if (!ep) {
+        // pick the endpoint that RETURNS an image; prefer one that also takes an image + a prompt
+        let best = -1;
         for (const k in named) {
-          if ((named[k].parameters || []).some(gIsImage)) { epName = k; ep = named[k]; break; }
+          const e = named[k];
+          const params = e.parameters || [], rets = e.returns || [];
+          if (!rets.some(gIsImage)) continue;
+          let sc = 10;
+          if (params.some(gIsImage)) sc += 5;
+          if (params.some(gIsText)) sc += 3;
+          if (sc > best) { best = sc; epName = k; ep = e; }
         }
       }
-      if (!ep) throw new Error("Не нашёл API с картинкой у этого Space. Укажите «API name» (Space → Use via API).");
+      if (!ep) throw new Error("Не нашёл у Space API, возвращающий картинку. Укажите «API name» (Space → Use via API).");
       const params = ep.parameters || [];
       const values = params.map(p => (p.parameter_has_default ? p.parameter_default : null));
       const imgIdx = params.findIndex(gIsImage);
@@ -1387,7 +1395,7 @@
       if (data == null) throw new Error("Space не вернул данные (возможно, отменено или таймаут)");
 
       let url = gFindImage(data);
-      if (!url) throw new Error("Space вернул ответ без картинки: " + JSON.stringify(data).slice(0, 160));
+      if (!url) throw new Error("Space (" + epName + ") вернул ответ без картинки: " + JSON.stringify(data).slice(0, 160));
       if (!/^https?:|^data:/.test(url)) {
         const base = /^https?:\/\//.test(target) ? target.replace(/\/$/, "") : "https://" + target.replace(/\//g, "-").toLowerCase() + ".hf.space";
         url = base + (url.charAt(0) === "/" ? "" : "/") + url;
