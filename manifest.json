@@ -1,13 +1,15 @@
 {
-  "name": "Чёрно-белая камера",
-  "short_name": "Ч/Б камера",
-  "description": "Съёмка и сохранение чёрно-белых фотографий",
+  "name": "Фотокомикс — фотокнига и комикс",
+  "short_name": "Фотокомикс",
+  "description": "Снимайте кадры, выбирайте лучший дубль и собирайте фотокнигу или комикс со страницами и подсказками.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0f0f0f",
+  "background_color": "#efe9dc",
   "theme_color": "#111111",
   "orientation": "portrait",
+  "lang": "ru",
+  "categories": ["photo", "productivity", "entertainment"],
   "icons": [
     {
       "src": "icon.svg",

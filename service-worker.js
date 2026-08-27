@@ -1,4 +1,4 @@
-const CACHE_NAME = "bw-camera-v1";
+const CACHE_NAME = "photocomic-v1";
 
 const APP_FILES = [
   "./",
@@ -32,18 +32,22 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      return (
-        cachedResponse ||
-        fetch(event.request).then((networkResponse) => {
-          const responseCopy = networkResponse.clone();
+      if (cachedResponse) return cachedResponse;
 
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseCopy);
-          });
-
+      return fetch(event.request)
+        .then((networkResponse) => {
+          // Cache successful, cacheable responses (app shell + Google Fonts).
+          // Skip opaque/error responses so a broken entry never poisons the cache.
+          if (networkResponse && networkResponse.ok && networkResponse.type !== "opaque") {
+            const responseCopy = networkResponse.clone();
+            caches
+              .open(CACHE_NAME)
+              .then((cache) => cache.put(event.request, responseCopy))
+              .catch(() => {});
+          }
           return networkResponse;
         })
-      );
+        .catch(() => cachedResponse);
     })
   );
 });
