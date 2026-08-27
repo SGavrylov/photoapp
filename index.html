@@ -2,439 +2,1107 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#111111" />
-  <meta name="description" content="PWA-камера для создания чёрно-белых фотографий" />
+  <meta name="description" content="Создавайте фотокнигу или комикс: снимайте кадры, выбирайте лучший дубль и подписывайте страницы." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
 
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
 
-  <title>Чёрно-белая камера</title>
+  <title>Фотокомикс</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:ital,wght@0,600;0,800;1,600&display=swap" rel="stylesheet" />
 
   <style>
     :root {
-      color-scheme: dark;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --background: #0f0f0f;
-      --panel: #1b1b1b;
-      --text: #f5f5f5;
-      --muted: #ababab;
-      --border: #353535;
-      --button: #f5f5f5;
-      --button-text: #111111;
+      color-scheme: light;
+      --paper: #efe9dc;
+      --paper-2: #e5ddcc;
+      --ink: #14110d;
+      --panel: #ffffff;
+      --border: #14110d;
+      --accent: #ff3b30;
+      --accent-2: #ffd400;
+      --muted: #7d766a;
+      --caption-bg: #fff7cf;
+      --shadow: 0 10px 0 rgba(20, 17, 13, 0.14);
+      --display: "Bangers", "Impact", system-ui, sans-serif;
+      --body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
     }
 
-    * {
-      box-sizing: border-box;
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
     }
 
     body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--background);
-      color: var(--text);
+      font-family: var(--body);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 15%, rgba(255, 212, 0, 0.10), transparent 40%),
+        radial-gradient(circle at 88% 82%, rgba(255, 59, 48, 0.08), transparent 42%),
+        var(--paper);
+      background-image:
+        radial-gradient(rgba(20,17,13,0.05) 1px, transparent 1px);
+      background-size: 6px 6px, cover;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
-    main {
-      width: min(760px, 100%);
+    .app {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      max-width: 720px;
       margin: 0 auto;
-      padding: 20px;
     }
 
-    h1 {
-      margin: 0 0 8px;
-      font-size: clamp(1.7rem, 5vw, 2.6rem);
+    /* ---------- Top bar ---------- */
+    header {
+      padding: calc(var(--safe-top) + 10px) 14px 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
-    .description,
-    #status {
-      color: var(--muted);
-    }
-
-    .viewer {
-      position: relative;
-      margin-top: 20px;
+    .logo {
+      font-family: var(--display);
+      font-size: clamp(20px, 6.4vw, 28px);
+      letter-spacing: 1px;
+      line-height: 1;
+      color: var(--ink);
+      text-shadow: 2px 2px 0 var(--accent-2);
+      white-space: nowrap;
+      flex: 0 1 auto;
+      min-width: 0;
       overflow: hidden;
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      background: #000;
-      aspect-ratio: 3 / 4;
+      text-overflow: clip;
+    }
+    .logo b { color: var(--accent); }
+
+    .spacer { flex: 1; }
+
+    .pager-dots {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      padding: 6px 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      max-width: 45%;
+    }
+    .pager-dots::-webkit-scrollbar { display: none; }
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--ink);
+      background: transparent;
+      flex: 0 0 auto;
+      transition: transform .18s, background .18s;
+    }
+    .dot.active { background: var(--accent); transform: scale(1.35); }
+
+    .icon-btn {
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      border: 2.5px solid var(--ink);
+      background: var(--panel);
+      color: var(--ink);
+      font-size: 20px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      box-shadow: 3px 3px 0 rgba(20,17,13,0.9);
+      transition: transform .08s, box-shadow .08s;
+      flex: 0 0 auto;
+    }
+    .icon-btn:active { transform: translate(3px,3px); box-shadow: 0 0 0 rgba(0,0,0,0); }
+    .icon-btn svg { width: 22px; height: 22px; }
+
+    /* ---------- Deck (horizontal pages) ---------- */
+    .deck {
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      scrollbar-width: none;
+      touch-action: pan-x pan-y;
+    }
+    .deck::-webkit-scrollbar { display: none; }
+
+    .page {
+      flex: 0 0 100%;
+      width: 100%;
+      height: 100%;
+      scroll-snap-align: center;
+      scroll-snap-stop: always;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 12px;
+      padding: 8px 18px 4px;
     }
 
-    video,
-    canvas {
-      display: block;
+    .frame-wrap { position: relative; min-height: 0; }
+
+    .page-num {
+      position: absolute;
+      top: -2px; left: -6px;
+      z-index: 3;
+      font-family: var(--display);
+      font-size: 22px;
+      background: var(--accent-2);
+      color: var(--ink);
+      border: 2.5px solid var(--ink);
+      border-radius: 10px;
+      padding: 1px 10px 0;
+      box-shadow: 2px 2px 0 rgba(20,17,13,0.9);
+      pointer-events: none;
+    }
+
+    /* vertical variant carousel */
+    .frame {
+      height: 100%;
+      border: 3.5px solid var(--border);
+      border-radius: 16px;
+      background: repeating-linear-gradient(45deg,#111 0 10px,#161616 10px 20px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scroll-snap-type: y mandatory;
+      scrollbar-width: none;
+      box-shadow: var(--shadow);
+      touch-action: pan-y;
+    }
+    .frame::-webkit-scrollbar { display: none; }
+
+    .variant {
+      height: 100%;
+      width: 100%;
+      scroll-snap-align: center;
+      scroll-snap-stop: always;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #000;
+    }
+    .variant img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      display: block;
     }
 
-    canvas {
-      display: none;
-      object-fit: contain;
-      background: #000;
-    }
-
-    .controls {
+    .placeholder {
+      height: 100%;
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 16px;
-    }
-
-    button,
-    .file-label {
-      min-height: 48px;
-      border: 0;
-      border-radius: 12px;
-      padding: 12px 16px;
-      font: inherit;
-      font-weight: 700;
-      cursor: pointer;
+      place-content: center;
+      justify-items: center;
+      gap: 14px;
       text-align: center;
-      background: var(--button);
-      color: var(--button-text);
+      color: var(--muted);
+      padding: 24px;
+      cursor: pointer;
+      background:
+        repeating-linear-gradient(45deg, transparent 0 16px, rgba(255,255,255,.03) 16px 32px),
+        #1c1c1c;
+      color: #cfc8ba;
     }
+    .placeholder .ph-icon {
+      width: 74px; height: 74px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      border: 3px dashed #6b6459;
+    }
+    .placeholder .ph-icon svg { width: 40px; height: 40px; stroke: #cfc8ba; }
+    .placeholder p { margin: 0; font-weight: 800; font-size: 16px; }
+    .placeholder small { color: #948d80; }
 
-    button.secondary,
-    .file-label {
-      border: 1px solid var(--border);
+    /* variant indicator (up/down) */
+    .variant-rail {
+      position: absolute;
+      top: 50%; right: 14px;
+      transform: translateY(-50%);
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      align-items: center;
+      padding: 7px 5px;
+      border-radius: 999px;
+      background: rgba(20,17,13,.4);
+      pointer-events: none;
+    }
+    .variant-rail .vdot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.55);
+      border: 1px solid rgba(0,0,0,.4);
+    }
+    .variant-rail .vdot.on { background: var(--accent-2); transform: scale(1.4); }
+    .variant-rail.hidden { display: none; }
+
+    .swipe-hint {
+      position: absolute;
+      right: 10px; bottom: 10px;
+      z-index: 3;
+      background: rgba(20,17,13,.72);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 9px;
+      border-radius: 999px;
+      display: flex; align-items: center; gap: 5px;
+      pointer-events: none;
+    }
+    .swipe-hint.hidden { display: none; }
+
+    .variant-tools {
+      position: absolute;
+      left: 8px; bottom: 10px;
+      z-index: 4;
+      display: flex; gap: 8px;
+    }
+    .variant-tools.hidden { display: none; }
+    .mini-btn {
+      border: 2px solid var(--ink);
       background: var(--panel);
-      color: var(--text);
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 5px 9px;
+      font-family: var(--body);
+      font-weight: 800;
+      font-size: 12px;
+      cursor: pointer;
+      box-shadow: 2px 2px 0 rgba(20,17,13,.9);
+      display: flex; align-items: center; gap: 5px;
+    }
+    .mini-btn:active { transform: translate(2px,2px); box-shadow: none; }
+    .mini-btn.danger { background: var(--accent); color: #fff; }
+    .mini-btn svg { width: 14px; height: 14px; }
+
+    /* ---------- Caption box ---------- */
+    .caption {
+      border: 3px solid var(--ink);
+      border-radius: 14px;
+      background: var(--caption-bg);
+      box-shadow: 4px 4px 0 rgba(20,17,13,.9);
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .caption label {
+      font-family: var(--display);
+      letter-spacing: .6px;
+      font-size: 13px;
+      color: var(--accent);
+    }
+    .caption textarea {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      resize: none;
+      font-family: var(--body);
+      font-weight: 600;
+      font-style: italic;
+      font-size: 15px;
+      line-height: 1.35;
+      color: var(--ink);
+      outline: none;
+      -webkit-user-select: text;
+      user-select: text;
+      min-height: 22px;
+      max-height: 96px;
+      overflow-y: auto;
+    }
+    .caption textarea::placeholder { color: #b9a94f; }
+    .saved-tag {
+      align-self: flex-end;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--muted);
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .saved-tag.show { opacity: 1; }
+
+    /* ---------- Bottom bar ---------- */
+    footer {
+      padding: 8px 20px calc(var(--safe-bottom) + 10px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
     }
 
-    button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
+    .shutter {
+      width: 74px; height: 74px;
+      border-radius: 50%;
+      border: 4px solid var(--ink);
+      background: var(--accent);
+      display: grid; place-items: center;
+      cursor: pointer;
+      box-shadow: 4px 4px 0 rgba(20,17,13,.95);
+      transition: transform .08s, box-shadow .08s;
+    }
+    .shutter:active { transform: translate(4px,4px); box-shadow: none; }
+    .shutter::after {
+      content: "";
+      width: 54px; height: 54px;
+      border-radius: 50%;
+      border: 3px solid #fff;
     }
 
-    input[type="file"] {
+    .foot-side {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      width: 88px;
+    }
+    .foot-side span { font-size: 11px; font-weight: 800; color: var(--muted); }
+
+    /* ---------- Camera modal ---------- */
+    .cam {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: #000;
+      display: none;
+      grid-template-rows: auto 1fr auto;
+    }
+    .cam.open { display: grid; }
+    .cam-top {
+      padding: calc(var(--safe-top) + 12px) 18px 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      color: #fff;
+    }
+    .cam-top .title { font-family: var(--display); font-size: 22px; letter-spacing: 1px; }
+    .cam-stage { position: relative; overflow: hidden; }
+    .cam video { width: 100%; height: 100%; object-fit: cover; }
+    .cam-frameguide {
+      position: absolute; inset: 16px;
+      border: 2px dashed rgba(255,255,255,.4);
+      border-radius: 14px;
+      pointer-events: none;
+    }
+    .cam-msg {
+      position: absolute; inset: 0;
+      display: none;
+      place-content: center;
+      text-align: center;
+      color: #eee; padding: 30px; gap: 10px;
+      font-weight: 700;
+    }
+    .cam-msg.show { display: grid; }
+    .cam-bottom {
+      padding: 14px 24px calc(var(--safe-bottom) + 18px);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .cam-ghost {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      border: 2px solid rgba(255,255,255,.6);
+      background: rgba(255,255,255,.08);
+      color: #fff;
+      display: grid; place-items: center;
+      cursor: pointer;
+    }
+    .cam-ghost svg { width: 24px; height: 24px; }
+    .cam-target {
+      color: #fff; font-weight: 800; font-size: 13px; text-align: center; line-height: 1.2;
+    }
+    .cam-target b { color: var(--accent-2); }
+
+    input[type="file"] { display: none; }
+    canvas.work { display: none; }
+
+    /* ---------- Sheet menu ---------- */
+    .sheet-backdrop {
+      position: fixed; inset: 0; z-index: 40;
+      background: rgba(20,17,13,.45);
       display: none;
     }
-
-    #status {
-      min-height: 24px;
-      margin-top: 14px;
+    .sheet-backdrop.open { display: block; }
+    .sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+      max-width: 720px; margin: 0 auto;
+      background: var(--paper);
+      border-top-left-radius: 22px; border-top-right-radius: 22px;
+      border: 3px solid var(--ink); border-bottom: 0;
+      padding: 10px 18px calc(var(--safe-bottom) + 22px);
+      transform: translateY(110%);
+      transition: transform .25s ease;
     }
-
-    .tip {
-      margin-top: 18px;
-      padding: 14px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
+    .sheet.open { transform: translateY(0); }
+    .sheet .grip { width: 44px; height: 5px; border-radius: 3px; background: var(--muted); margin: 4px auto 14px; }
+    .sheet h3 { margin: 0 0 12px; font-family: var(--display); letter-spacing: 1px; font-size: 22px; }
+    .sheet-btn {
+      width: 100%;
+      display: flex; align-items: center; gap: 12px;
+      border: 2.5px solid var(--ink);
       background: var(--panel);
-      color: var(--muted);
-      line-height: 1.5;
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      font-family: var(--body); font-weight: 800; font-size: 15px;
+      color: var(--ink);
+      cursor: pointer;
+      box-shadow: 3px 3px 0 rgba(20,17,13,.9);
     }
+    .sheet-btn:active { transform: translate(3px,3px); box-shadow: none; }
+    .sheet-btn svg { width: 22px; height: 22px; flex: 0 0 auto; }
+    .sheet-btn.danger { color: var(--accent); border-color: var(--accent); }
+    .sheet-btn small { display:block; font-weight: 600; color: var(--muted); font-size: 12px; margin-top: 2px; }
 
-    @media (max-width: 520px) {
-      main {
-        padding: 14px;
-      }
+    .toast {
+      position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 110px);
+      transform: translateX(-50%) translateY(20px);
+      background: var(--ink); color: #fff;
+      padding: 10px 16px; border-radius: 999px;
+      font-weight: 800; font-size: 13px;
+      z-index: 60; opacity: 0; pointer-events: none;
+      transition: opacity .2s, transform .2s;
+      max-width: 90%; text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-      .controls {
-        grid-template-columns: 1fr;
-      }
+    @media (max-height: 680px) {
+      .logo { font-size: 26px; }
+      .shutter { width: 64px; height: 64px; }
+      .shutter::after { width: 46px; height: 46px; }
     }
   </style>
 </head>
 
 <body>
-  <main>
-    <h1>Чёрно-белая камера</h1>
-    <div class="description">
-      Сделайте фотографию камерой или выберите изображение с устройства.
+  <div class="app">
+    <header>
+      <div class="logo">ФОТО<b>КОМИКС</b></div>
+      <div class="spacer"></div>
+      <div class="pager-dots" id="dots" aria-label="Страницы"></div>
+      <button class="icon-btn" id="menuBtn" title="Меню" aria-label="Меню">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h16M4 6h16M4 18h16"/></svg>
+      </button>
+    </header>
+
+    <div class="deck" id="deck"></div>
+
+    <footer>
+      <div class="foot-side">
+        <button class="icon-btn" id="galleryBtn" aria-label="Из галереи">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        </button>
+        <span>Галерея</span>
+      </div>
+
+      <button class="shutter" id="shutterBtn" aria-label="Снять кадр"></button>
+
+      <div class="foot-side">
+        <button class="icon-btn" id="addPageBtn" aria-label="Добавить страницу">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <span>Страница</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Camera -->
+  <div class="cam" id="cam">
+    <div class="cam-top">
+      <button class="cam-ghost" id="camClose" aria-label="Закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+      <div class="title">КАДР <span id="camPageNum">1</span></div>
+      <button class="cam-ghost" id="camSwitch" aria-label="Сменить камеру">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><path d="M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
+      </button>
     </div>
-
-    <section class="viewer" aria-label="Предпросмотр камеры и фотографии">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="canvas"></canvas>
-    </section>
-
-    <div class="controls">
-      <button id="startButton" type="button">Включить камеру</button>
-      <button id="captureButton" type="button" disabled>Сделать фото</button>
-
-      <label class="file-label" for="fileInput">
-        Выбрать фото
-      </label>
-      <input id="fileInput" type="file" accept="image/*" capture="environment" />
-
-      <button id="downloadButton" type="button" disabled>
-        Сохранить фото
-      </button>
-
-      <button id="retakeButton" class="secondary" type="button" disabled>
-        Снять заново
-      </button>
-
-      <button id="switchButton" class="secondary" type="button">
-        Сменить камеру
-      </button>
-
-      <button id="installButton" class="secondary" type="button" hidden>
-        Установить приложение
-      </button>
+    <div class="cam-stage">
+      <video id="camVideo" autoplay playsinline muted></video>
+      <div class="cam-frameguide"></div>
+      <div class="cam-msg" id="camMsg"></div>
     </div>
-
-    <div id="status" role="status" aria-live="polite"></div>
-
-    <div class="tip">
-      Изображение обрабатывается прямо на устройстве и никуда не загружается.
-      Для работы камеры сайт должен быть открыт через HTTPS или localhost.
+    <div class="cam-bottom">
+      <button class="cam-ghost" id="camGallery" aria-label="Из галереи">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+      </button>
+      <button class="shutter" id="camShutter" aria-label="Сделать снимок"></button>
+      <div class="cam-target">на страницу<br><b id="camTargetName">1</b></div>
     </div>
-  </main>
+  </div>
+
+  <!-- Menu sheet -->
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="sheet">
+    <div class="grip"></div>
+    <h3>Меню</h3>
+    <button class="sheet-btn" id="mAddPage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      <div>Добавить страницу</div>
+    </button>
+    <button class="sheet-btn" id="mClearPhotos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+      <div>Очистить кадры этой страницы<small>Текст-подсказка останется</small></div>
+    </button>
+    <button class="sheet-btn danger" id="mDeletePage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
+      <div>Удалить эту страницу</div>
+    </button>
+    <button class="sheet-btn danger" id="mReset">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      <div>Начать заново<small>Вернуть 3 пустые страницы</small></div>
+    </button>
+  </div>
+
+  <input id="fileInput" type="file" accept="image/*" />
+  <canvas class="work" id="work"></canvas>
+  <div class="toast" id="toast"></div>
 
   <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
-    const context = canvas.getContext("2d", { willReadFrequently: true });
+  (function () {
+    "use strict";
 
-    const startButton = document.getElementById("startButton");
-    const captureButton = document.getElementById("captureButton");
-    const downloadButton = document.getElementById("downloadButton");
-    const retakeButton = document.getElementById("retakeButton");
-    const switchButton = document.getElementById("switchButton");
-    const installButton = document.getElementById("installButton");
+    /* ============================ Storage (IndexedDB) ============================ */
+    const DB_NAME = "photocomic";
+    const STORE = "book";
+    const KEY = "current";
+    let db = null;
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    function idbGet() {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).get(KEY);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    function idbPut(value) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(value, KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    /* ============================ State ============================ */
+    const DEFAULT_PROMPTS = [
+      "Кадр 1 — Завязка: покажи героя и место действия. Общий план.",
+      "Кадр 2 — Развитие: что-то происходит. Крупный план, эмоция.",
+      "Кадр 3 — Развязка: финал истории. Реакция героя."
+    ];
+
+    // state.pages: [{ id, prompt, selected, photos: [Blob, ...] }]
+    let state = { pages: [] };
+    let currentPage = 0;
+    const urlCache = new Map(); // Blob -> objectURL
+
+    function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+    function blankPage(prompt) {
+      return { id: uid(), prompt: prompt || "", selected: 0, photos: [] };
+    }
+
+    function freshBook() {
+      return { pages: DEFAULT_PROMPTS.map(p => blankPage(p)) };
+    }
+
+    let saveTimer = null;
+    function persist(immediate) {
+      clearTimeout(saveTimer);
+      const doSave = () => { if (db) idbPut(state).catch(err => console.warn("save failed", err)); };
+      if (immediate) doSave(); else saveTimer = setTimeout(doSave, 400);
+    }
+
+    function urlFor(blob) {
+      if (!urlCache.has(blob)) urlCache.set(blob, URL.createObjectURL(blob));
+      return urlCache.get(blob);
+    }
+    function releaseUrl(blob) {
+      if (urlCache.has(blob)) { URL.revokeObjectURL(urlCache.get(blob)); urlCache.delete(blob); }
+    }
+
+    /* ============================ DOM refs ============================ */
+    const deck = document.getElementById("deck");
+    const dotsEl = document.getElementById("dots");
+    const toastEl = document.getElementById("toast");
+    const work = document.getElementById("work");
     const fileInput = document.getElementById("fileInput");
-    const status = document.getElementById("status");
 
-    let mediaStream = null;
-    let facingMode = "environment";
-    let deferredInstallPrompt = null;
-
-    function setStatus(message) {
-      status.textContent = message;
+    let toastTimer = null;
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1600);
     }
 
-    async function stopCamera() {
-      if (!mediaStream) return;
-
-      mediaStream.getTracks().forEach((track) => track.stop());
-      mediaStream = null;
-      video.srcObject = null;
-      captureButton.disabled = true;
-    }
-
-    async function startCamera() {
-      try {
-        await stopCamera();
-
-        if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error("Камера не поддерживается этим браузером.");
-        }
-
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: { ideal: facingMode },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
+    /* ============================ Render ============================ */
+    function render() {
+      // rebuild deck
+      deck.innerHTML = "";
+      state.pages.forEach((page, index) => deck.appendChild(buildPage(page, index)));
+      renderDots();
+      // clamp current page
+      if (currentPage > state.pages.length - 1) currentPage = state.pages.length - 1;
+      if (currentPage < 0) currentPage = 0;
+      // restore horizontal scroll to current page (after layout)
+      requestAnimationFrame(() => {
+        deck.scrollLeft = currentPage * deck.clientWidth;
+        // restore selected variant per page
+        state.pages.forEach((page, i) => {
+          const frame = deck.children[i].querySelector(".frame");
+          if (frame && page.photos.length) {
+            frame.scrollTop = page.selected * frame.clientHeight;
           }
         });
+      });
+    }
 
-        video.srcObject = mediaStream;
-        await video.play();
+    function buildPage(page, index) {
+      const section = document.createElement("section");
+      section.className = "page";
+      section.dataset.index = index;
 
-        video.style.display = "block";
-        canvas.style.display = "none";
+      const wrap = document.createElement("div");
+      wrap.className = "frame-wrap";
 
-        captureButton.disabled = false;
-        retakeButton.disabled = true;
-        setStatus("Камера готова.");
-      } catch (error) {
-        console.error(error);
-        setStatus(
-          "Не удалось открыть камеру. Разрешите доступ к камере или выберите фото с устройства."
-        );
+      const num = document.createElement("div");
+      num.className = "page-num";
+      num.textContent = index + 1;
+      wrap.appendChild(num);
+
+      const frame = document.createElement("div");
+      frame.className = "frame";
+
+      if (page.photos.length === 0) {
+        const ph = document.createElement("div");
+        ph.className = "placeholder";
+        ph.innerHTML =
+          '<div class="ph-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>' +
+          '<p>Снимите кадр</p><small>Тапните здесь или кнопку внизу</small>';
+        ph.addEventListener("click", () => openCamera());
+        frame.appendChild(ph);
+      } else {
+        page.photos.forEach((blob) => {
+          const v = document.createElement("div");
+          v.className = "variant";
+          const img = document.createElement("img");
+          img.src = urlFor(blob);
+          img.alt = "Кадр " + (index + 1);
+          v.appendChild(img);
+          frame.appendChild(v);
+        });
+      }
+      wrap.appendChild(frame);
+
+      // variant rail (up/down dots)
+      const rail = document.createElement("div");
+      rail.className = "variant-rail" + (page.photos.length > 1 ? "" : " hidden");
+      for (let i = 0; i < page.photos.length; i++) {
+        const vd = document.createElement("div");
+        vd.className = "vdot" + (i === page.selected ? " on" : "");
+        rail.appendChild(vd);
+      }
+      wrap.appendChild(rail);
+
+      // swipe hint
+      const hint = document.createElement("div");
+      hint.className = "swipe-hint" + (page.photos.length > 1 ? "" : " hidden");
+      hint.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg> дубль ' + (page.selected + 1) + '/' + page.photos.length;
+      wrap.appendChild(hint);
+
+      // per-variant tools (delete current dubl)
+      const tools = document.createElement("div");
+      tools.className = "variant-tools" + (page.photos.length ? "" : " hidden");
+      const del = document.createElement("button");
+      del.className = "mini-btn danger";
+      del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg> дубль';
+      del.addEventListener("click", () => deleteCurrentVariant(index));
+      tools.appendChild(del);
+      wrap.appendChild(tools);
+
+      section.appendChild(wrap);
+
+      // caption
+      const cap = document.createElement("div");
+      cap.className = "caption";
+      const lbl = document.createElement("label");
+      lbl.textContent = "Подсказка к кадру";
+      const ta = document.createElement("textarea");
+      ta.value = page.prompt;
+      ta.rows = 2;
+      ta.placeholder = "Опиши, каким должен быть этот кадр…";
+      ta.setAttribute("enterkeyhint", "done");
+      const savedTag = document.createElement("span");
+      savedTag.className = "saved-tag";
+      savedTag.textContent = "сохранено ✓";
+
+      const autoSize = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 96) + "px"; };
+      ta.addEventListener("input", () => {
+        page.prompt = ta.value;
+        autoSize();
+        persist();
+        savedTag.classList.add("show");
+        clearTimeout(ta._t);
+        ta._t = setTimeout(() => savedTag.classList.remove("show"), 900);
+      });
+      // keep vertical variant swipe from being hijacked while typing is fine; textarea is its own scroll
+      cap.appendChild(lbl);
+      cap.appendChild(ta);
+      cap.appendChild(savedTag);
+      section.appendChild(cap);
+      requestAnimationFrame(autoSize);
+
+      // watch variant selection via vertical scroll
+      frame.addEventListener("scroll", () => {
+        if (!page.photos.length) return;
+        const idx = Math.round(frame.scrollTop / frame.clientHeight);
+        if (idx !== page.selected && idx >= 0 && idx < page.photos.length) {
+          page.selected = idx;
+          updateVariantUI(section, page);
+          persist();
+        }
+      }, { passive: true });
+
+      return section;
+    }
+
+    function updateVariantUI(section, page) {
+      const rail = section.querySelector(".variant-rail");
+      rail.querySelectorAll(".vdot").forEach((d, i) => d.classList.toggle("on", i === page.selected));
+      const hint = section.querySelector(".swipe-hint");
+      if (page.photos.length > 1) {
+        hint.classList.remove("hidden");
+        hint.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg> дубль ' + (page.selected + 1) + '/' + page.photos.length;
+      } else {
+        hint.classList.add("hidden");
       }
     }
 
-    function convertCanvasToGrayscale() {
-      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels = imageData.data;
-
-      for (let i = 0; i < pixels.length; i += 4) {
-        const red = pixels[i];
-        const green = pixels[i + 1];
-        const blue = pixels[i + 2];
-
-        // Взвешенное преобразование, близкое к человеческому восприятию яркости.
-        const gray = Math.round(0.299 * red + 0.587 * green + 0.114 * blue);
-
-        pixels[i] = gray;
-        pixels[i + 1] = gray;
-        pixels[i + 2] = gray;
-      }
-
-      context.putImageData(imageData, 0, 0);
+    function renderDots() {
+      dotsEl.innerHTML = "";
+      state.pages.forEach((_, i) => {
+        const d = document.createElement("div");
+        d.className = "dot" + (i === currentPage ? " active" : "");
+        d.addEventListener("click", () => goToPage(i));
+        dotsEl.appendChild(d);
+      });
     }
 
-    function showProcessedImage() {
-      video.style.display = "none";
-      canvas.style.display = "block";
-      captureButton.disabled = true;
-      downloadButton.disabled = false;
-      retakeButton.disabled = false;
-      setStatus("Чёрно-белое фото готово.");
+    function goToPage(i) {
+      currentPage = Math.max(0, Math.min(i, state.pages.length - 1));
+      deck.scrollTo({ left: currentPage * deck.clientWidth, behavior: "smooth" });
+      syncDots();
     }
 
-    function capturePhoto() {
-      if (!video.videoWidth || !video.videoHeight) {
-        setStatus("Камера ещё не готова.");
+    function syncDots() {
+      dotsEl.querySelectorAll(".dot").forEach((d, i) => d.classList.toggle("active", i === currentPage));
+      // keep active dot visible
+      const active = dotsEl.children[currentPage];
+      if (active) active.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+
+    // track horizontal page via scroll
+    let scrollRaf = null;
+    deck.addEventListener("scroll", () => {
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = null;
+        const w = deck.clientWidth || 1;
+        const idx = Math.round(deck.scrollLeft / w);
+        if (idx !== currentPage && idx >= 0 && idx < state.pages.length) {
+          currentPage = idx;
+          syncDots();
+        }
+      });
+    }, { passive: true });
+
+    /* ============================ Photo actions ============================ */
+    function addPhotoToCurrent(blob) {
+      const page = state.pages[currentPage];
+      page.photos.push(blob);
+      page.selected = page.photos.length - 1;
+      persist(true);
+      // rebuild only this page for correctness, then scroll to new variant
+      const oldSection = deck.children[currentPage];
+      const newSection = buildPage(page, currentPage);
+      deck.replaceChild(newSection, oldSection);
+      const frame = newSection.querySelector(".frame");
+      requestAnimationFrame(() => {
+        frame.scrollTop = page.selected * frame.clientHeight;
+      });
+      toast(page.photos.length > 1 ? "Добавлен дубль " + page.photos.length : "Кадр добавлен");
+    }
+
+    function deleteCurrentVariant(index) {
+      const page = state.pages[index];
+      if (!page.photos.length) return;
+      const removed = page.photos.splice(page.selected, 1)[0];
+      releaseUrl(removed);
+      if (page.selected >= page.photos.length) page.selected = Math.max(0, page.photos.length - 1);
+      persist(true);
+      const newSection = buildPage(page, index);
+      deck.replaceChild(newSection, deck.children[index]);
+      const frame = newSection.querySelector(".frame");
+      requestAnimationFrame(() => {
+        if (page.photos.length) frame.scrollTop = page.selected * frame.clientHeight;
+      });
+      toast("Дубль удалён");
+    }
+
+    /* ============================ Camera ============================ */
+    const cam = document.getElementById("cam");
+    const camVideo = document.getElementById("camVideo");
+    const camMsg = document.getElementById("camMsg");
+    const camPageNum = document.getElementById("camPageNum");
+    const camTargetName = document.getElementById("camTargetName");
+    let stream = null;
+    let facing = "environment";
+
+    function showCamMsg(text) { camMsg.textContent = text; camMsg.classList.add("show"); }
+    function hideCamMsg() { camMsg.classList.remove("show"); }
+
+    async function startStream() {
+      stopStream();
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showCamMsg("Камера недоступна в этом браузере. Используйте кнопку галереи ниже.");
         return;
       }
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      convertCanvasToGrayscale();
-      showProcessedImage();
-    }
-
-    function loadSelectedImage(file) {
-      if (!file) return;
-
-      if (!file.type.startsWith("image/")) {
-        setStatus("Выберите файл изображения.");
-        return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1440 } }
+        });
+        camVideo.srcObject = stream;
+        await camVideo.play();
+        hideCamMsg();
+      } catch (err) {
+        console.warn(err);
+        showCamMsg("Нет доступа к камере. Разрешите доступ или выберите фото из галереи.");
       }
-
-      const image = new Image();
-      const objectUrl = URL.createObjectURL(file);
-
-      image.onload = () => {
-        const maxDimension = 2400;
-        const scale = Math.min(
-          1,
-          maxDimension / Math.max(image.naturalWidth, image.naturalHeight)
-        );
-
-        canvas.width = Math.round(image.naturalWidth * scale);
-        canvas.height = Math.round(image.naturalHeight * scale);
-
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        convertCanvasToGrayscale();
-        showProcessedImage();
-
-        URL.revokeObjectURL(objectUrl);
-      };
-
-      image.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        setStatus("Не удалось прочитать выбранное изображение.");
-      };
-
-      image.src = objectUrl;
+    }
+    function stopStream() {
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      camVideo.srcObject = null;
     }
 
-    function downloadPhoto() {
-      if (!canvas.width || !canvas.height) return;
-
-      canvas.toBlob(
-        async (blob) => {
-          if (!blob) {
-            setStatus("Не удалось подготовить файл.");
-            return;
-          }
-
-          const filename = `black-and-white-${new Date()
-            .toISOString()
-            .replace(/[:.]/g, "-")}.jpg`;
-
-          const file = new File([blob], filename, { type: "image/jpeg" });
-
-          // На поддерживаемых телефонах откроется системное меню сохранения/отправки.
-          if (
-            navigator.canShare &&
-            navigator.canShare({ files: [file] }) &&
-            navigator.share
-          ) {
-            try {
-              await navigator.share({
-                files: [file],
-                title: "Чёрно-белое фото"
-              });
-              setStatus("Открыто системное меню сохранения.");
-              return;
-            } catch (error) {
-              if (error.name !== "AbortError") {
-                console.warn("Share API error:", error);
-              }
-            }
-          }
-
-          // Универсальный вариант для компьютеров и браузеров.
-          const objectUrl = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = objectUrl;
-          link.download = filename;
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
-
-          setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-          setStatus("Файл сохранён в папку загрузок.");
-        },
-        "image/jpeg",
-        0.92
-      );
+    function openCamera() {
+      camPageNum.textContent = currentPage + 1;
+      camTargetName.textContent = "стр. " + (currentPage + 1);
+      cam.classList.add("open");
+      startStream();
+    }
+    function closeCamera() {
+      cam.classList.remove("open");
+      stopStream();
     }
 
-    async function retakePhoto() {
-      downloadButton.disabled = true;
-      retakeButton.disabled = true;
-      await startCamera();
+    function captureFromVideo() {
+      if (!camVideo.videoWidth) { toast("Камера ещё не готова"); return; }
+      const vw = camVideo.videoWidth, vh = camVideo.videoHeight;
+      // crop to 3:4 portrait to match the comic frame
+      const targetRatio = 3 / 4;
+      let cw = vw, ch = Math.round(vw / targetRatio);
+      if (ch > vh) { ch = vh; cw = Math.round(vh * targetRatio); }
+      const sx = Math.round((vw - cw) / 2), sy = Math.round((vh - ch) / 2);
+      work.width = cw; work.height = ch;
+      const ctx = work.getContext("2d");
+      if (facing === "user") { ctx.translate(cw, 0); ctx.scale(-1, 1); }
+      ctx.drawImage(camVideo, sx, sy, cw, ch, 0, 0, cw, ch);
+      work.toBlob((blob) => {
+        if (!blob) { toast("Не удалось сделать снимок"); return; }
+        addPhotoToCurrent(blob);
+        closeCamera();
+      }, "image/jpeg", 0.9);
     }
 
     async function switchCamera() {
-      facingMode = facingMode === "environment" ? "user" : "environment";
-      await startCamera();
+      facing = facing === "environment" ? "user" : "environment";
+      await startStream();
     }
 
-    startButton.addEventListener("click", startCamera);
-    captureButton.addEventListener("click", capturePhoto);
-    downloadButton.addEventListener("click", downloadPhoto);
-    retakeButton.addEventListener("click", retakePhoto);
-    switchButton.addEventListener("click", switchCamera);
+    /* ---- file import (shared by footer + camera) ---- */
+    let importTargetPage = null;
+    function importImage(file) {
+      if (!file || !file.type.startsWith("image/")) { toast("Выберите изображение"); return; }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const maxDim = 1600;
+        const ratio = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.round(img.naturalWidth * ratio), h = Math.round(img.naturalHeight * ratio);
+        work.width = w; work.height = h;
+        work.getContext("2d").drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        work.toBlob((blob) => {
+          if (!blob) { toast("Не удалось обработать фото"); return; }
+          if (importTargetPage !== null) currentPage = importTargetPage;
+          addPhotoToCurrent(blob);
+          importTargetPage = null;
+          closeCamera();
+        }, "image/jpeg", 0.9);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); toast("Не удалось прочитать файл"); };
+      img.src = url;
+    }
 
-    fileInput.addEventListener("change", (event) => {
-      loadSelectedImage(event.target.files?.[0]);
-      event.target.value = "";
+    fileInput.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      importImage(f);
+      e.target.value = "";
     });
 
-    window.addEventListener("beforeinstallprompt", (event) => {
-      event.preventDefault();
-      deferredInstallPrompt = event;
-      installButton.hidden = false;
+    /* ============================ Pages management ============================ */
+    function addPage() {
+      const page = blankPage("");
+      const insertAt = currentPage + 1;
+      state.pages.splice(insertAt, 0, page);
+      persist(true);
+      render();
+      goToPage(insertAt);
+      toast("Страница добавлена");
+    }
+
+    function deletePage() {
+      if (state.pages.length <= 1) { toast("Нужна хотя бы одна страница"); return; }
+      const page = state.pages[currentPage];
+      page.photos.forEach(releaseUrl);
+      state.pages.splice(currentPage, 1);
+      if (currentPage > state.pages.length - 1) currentPage = state.pages.length - 1;
+      persist(true);
+      render();
+      goToPage(currentPage);
+      toast("Страница удалена");
+    }
+
+    function clearPhotos() {
+      const page = state.pages[currentPage];
+      page.photos.forEach(releaseUrl);
+      page.photos = [];
+      page.selected = 0;
+      persist(true);
+      const newSection = buildPage(page, currentPage);
+      deck.replaceChild(newSection, deck.children[currentPage]);
+      toast("Кадры очищены");
+    }
+
+    function resetAll() {
+      state.pages.forEach(p => p.photos.forEach(releaseUrl));
+      state = freshBook();
+      currentPage = 0;
+      persist(true);
+      render();
+      toast("Новый комикс");
+    }
+
+    /* ============================ Menu sheet ============================ */
+    const sheet = document.getElementById("sheet");
+    const backdrop = document.getElementById("sheetBackdrop");
+    function openSheet() { sheet.classList.add("open"); backdrop.classList.add("open"); }
+    function closeSheet() { sheet.classList.remove("open"); backdrop.classList.remove("open"); }
+
+    /* ============================ Wire up ============================ */
+    document.getElementById("shutterBtn").addEventListener("click", openCamera);
+    document.getElementById("galleryBtn").addEventListener("click", () => { importTargetPage = currentPage; fileInput.click(); });
+    document.getElementById("addPageBtn").addEventListener("click", addPage);
+    document.getElementById("menuBtn").addEventListener("click", openSheet);
+
+    document.getElementById("camClose").addEventListener("click", closeCamera);
+    document.getElementById("camShutter").addEventListener("click", captureFromVideo);
+    document.getElementById("camSwitch").addEventListener("click", switchCamera);
+    document.getElementById("camGallery").addEventListener("click", () => { importTargetPage = currentPage; fileInput.click(); });
+
+    backdrop.addEventListener("click", closeSheet);
+    document.getElementById("mAddPage").addEventListener("click", () => { closeSheet(); addPage(); });
+    document.getElementById("mClearPhotos").addEventListener("click", () => { closeSheet(); clearPhotos(); });
+    document.getElementById("mDeletePage").addEventListener("click", () => { closeSheet(); deletePage(); });
+    document.getElementById("mReset").addEventListener("click", () => {
+      closeSheet();
+      if (confirm("Начать заново? Все кадры будут удалены, останутся 3 пустые страницы с подсказками.")) resetAll();
     });
 
-    installButton.addEventListener("click", async () => {
-      if (!deferredInstallPrompt) return;
-
-      deferredInstallPrompt.prompt();
-      await deferredInstallPrompt.userChoice;
-
-      deferredInstallPrompt = null;
-      installButton.hidden = true;
-    });
-
-    window.addEventListener("appinstalled", () => {
-      deferredInstallPrompt = null;
-      installButton.hidden = true;
-      setStatus("Приложение установлено.");
-    });
-
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", async () => {
-        try {
-          await navigator.serviceWorker.register("./service-worker.js");
-        } catch (error) {
-          console.error("Service worker registration failed:", error);
+    // keyboard arrows on desktop
+    window.addEventListener("keydown", (e) => {
+      if (document.activeElement && document.activeElement.tagName === "TEXTAREA") return;
+      if (cam.classList.contains("open")) { if (e.key === "Escape") closeCamera(); return; }
+      if (e.key === "ArrowRight") goToPage(currentPage + 1);
+      else if (e.key === "ArrowLeft") goToPage(currentPage - 1);
+      else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const page = state.pages[currentPage];
+        if (page.photos.length > 1) {
+          const dir = e.key === "ArrowDown" ? 1 : -1;
+          const frame = deck.children[currentPage].querySelector(".frame");
+          const next = Math.max(0, Math.min(page.selected + dir, page.photos.length - 1));
+          frame.scrollTo({ top: next * frame.clientHeight, behavior: "smooth" });
         }
+      }
+    });
+
+    // keep layout correct on resize/orientation
+    let resizeRaf = null;
+    window.addEventListener("resize", () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        deck.scrollLeft = currentPage * deck.clientWidth;
+      });
+    });
+
+    /* ============================ Boot ============================ */
+    async function boot() {
+      try {
+        db = await openDB();
+        const saved = await idbGet();
+        if (saved && saved.pages && saved.pages.length) {
+          // sanity: ensure fields
+          saved.pages.forEach(p => {
+            if (!Array.isArray(p.photos)) p.photos = [];
+            if (typeof p.selected !== "number") p.selected = 0;
+            if (typeof p.prompt !== "string") p.prompt = "";
+            if (p.selected > p.photos.length - 1) p.selected = Math.max(0, p.photos.length - 1);
+          });
+          state = { pages: saved.pages };
+        } else {
+          state = freshBook();
+          persist(true);
+        }
+      } catch (err) {
+        console.warn("DB unavailable, running in-memory", err);
+        state = freshBook();
+      }
+      render();
+    }
+
+    boot();
+
+    // Service worker
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js").catch(err => console.warn("SW failed", err));
       });
     }
+  })();
   </script>
 </body>
 </html>
