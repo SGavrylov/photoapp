@@ -707,7 +707,10 @@
     <label class="field">Токен HF <small>хранится только на устройстве</small>
       <input id="setToken" type="password" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="hf_…" />
     </label>
-    <p class="hint-text">Кадр уходит POST-запросом как JSON <code>{ inputs: base64, parameters: { prompt } }</code> с заголовком <code>Authorization: Bearer</code>. Ответ — картинка или JSON с base64.</p>
+    <label class="field">API name <small>для Gradio Space, необязательно</small>
+      <input id="setApiName" type="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="/infer (авто, если пусто)" />
+    </label>
+    <p class="hint-text">Если это <b>Space</b> (<code>huggingface.co/spaces/…</code> или <code>….hf.space</code>) — запрос идёт по протоколу Gradio автоматически (кадр + prompt). Иначе — обычный Inference API: POST JSON <code>{ inputs: base64, parameters: { prompt } }</code> с <code>Authorization: Bearer</code>, ответ картинкой или JSON с base64.</p>
     <div class="modal-actions">
       <button class="sheet-btn" id="setCancel"><div>Отмена</div></button>
       <button class="sheet-btn primary" id="setSave"><div>Сохранить</div></button>
@@ -764,7 +767,7 @@
     // state.pages: [{ id, prompt, selected, photos: [{ src: Blob, out: Blob|null }, ...] }]
     let state = { pages: [] };
     let currentPage = 0;
-    let settings = { endpoint: "", token: "" };
+    let settings = { endpoint: "", token: "", apiName: "" };
     const urlCache = new Map(); // Blob -> objectURL
 
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -1250,8 +1253,23 @@
       return null;
     }
 
+    // route: HF Space -> Gradio protocol; anything else -> plain Inference-API JSON
+    function isGradioSpace(url) {
+      return /huggingface\.co\/spaces\//i.test(url) || /\.hf\.space/i.test(url);
+    }
+    function spaceTarget(url) {
+      let m = url.match(/huggingface\.co\/spaces\/([^/?#]+)\/([^/?#]+)/i);
+      if (m) return m[1] + "/" + m[2];
+      m = url.match(/https?:\/\/[^/?#]+\.hf\.space/i);
+      if (m) return m[0];
+      return url;
+    }
     async function callHF(srcBlob, prompt) {
       if (!settings.endpoint) throw new Error("no-endpoint");
+      return isGradioSpace(settings.endpoint) ? callGradio(srcBlob, prompt) : callHFJson(srcBlob, prompt);
+    }
+
+    async function callHFJson(srcBlob, prompt) {
       const base64 = await blobToBase64(srcBlob);
       const headers = { "Content-Type": "application/json", "Accept": "image/png" };
       if (settings.token) headers["Authorization"] = "Bearer " + settings.token;
@@ -1269,6 +1287,70 @@
       const b64 = findBase64(data);
       if (b64) return base64ToBlob(b64, "image/png");
       throw new Error("Ответ без изображения: " + String(txt).slice(0, 160));
+    }
+
+    // ---- Gradio Space via @gradio/client (loaded on demand) ----
+    function gIsImage(p) {
+      if (!p) return false;
+      if (p.component === "Image" || p.component === "ImageEditor") return true;
+      const pt = p.python_type ? (p.python_type.type || p.python_type.description || "") : "";
+      return /image/i.test(p.label || "") || /image|filepath/i.test(pt);
+    }
+    function gIsText(p) {
+      if (!p) return false;
+      if (p.component === "Textbox" || p.component === "Text") return true;
+      return /prompt|text|описан/i.test(p.label || "") || /prompt/i.test(p.parameter_name || "");
+    }
+    function gFindImage(data) {
+      const arr = Array.isArray(data) ? data : [data];
+      for (const it of arr) {
+        if (!it) continue;
+        if (typeof it === "string" && /^(https?:|data:image|\/file|\/gradio_api)/.test(it)) return it;
+        if (typeof it === "object") {
+          if (it.url) return it.url;
+          if (Array.isArray(it)) { const r = gFindImage(it); if (r) return r; }
+          if (it.path && typeof it.path === "string") return it.path;
+          if (it.image) { const r = gFindImage([it.image]); if (r) return r; }
+        }
+      }
+      return null;
+    }
+    async function callGradio(srcBlob, prompt) {
+      let mod;
+      try {
+        mod = await import("https://cdn.jsdelivr.net/npm/@gradio/client/+esm");
+      } catch (e) {
+        throw new Error("Не удалось загрузить @gradio/client (нет сети?)");
+      }
+      const Client = mod.Client, handle_file = mod.handle_file;
+      const target = spaceTarget(settings.endpoint);
+      const app = await Client.connect(target, settings.token ? { hf_token: settings.token } : {});
+      const api = await app.view_api();
+      const named = (api && api.named_endpoints) || {};
+      let epName = (settings.apiName || "").trim();
+      let ep = epName && named[epName];
+      if (!ep) {
+        for (const k in named) {
+          if ((named[k].parameters || []).some(gIsImage)) { epName = k; ep = named[k]; break; }
+        }
+      }
+      if (!ep) throw new Error("Не нашёл API с картинкой у этого Space. Укажите «API name» в настройках (см. на странице Space → Use via API).");
+      const params = ep.parameters || [];
+      const values = params.map(p => (p.parameter_has_default ? p.parameter_default : null));
+      const imgIdx = params.findIndex(gIsImage);
+      const txtIdx = params.findIndex(gIsText);
+      if (imgIdx >= 0) values[imgIdx] = handle_file(srcBlob);
+      if (txtIdx >= 0 && prompt) values[txtIdx] = prompt;
+      const result = await app.predict(epName, values);
+      let url = gFindImage(result && result.data);
+      if (!url) throw new Error("Space не вернул изображение");
+      if (!/^https?:|^data:/.test(url)) {
+        const base = /^https?:\/\//.test(target) ? target.replace(/\/$/, "") : "https://" + target.replace(/\//g, "-").toLowerCase() + ".hf.space";
+        url = base + (url.charAt(0) === "/" ? "" : "/") + url;
+      }
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("Не удалось скачать результат: HTTP " + r.status);
+      return await r.blob();
     }
 
     function setOverlay(pageIndex, on, label) {
@@ -1345,6 +1427,7 @@
     function openSettings() {
       document.getElementById("setEndpoint").value = settings.endpoint || "";
       document.getElementById("setToken").value = settings.token || "";
+      document.getElementById("setApiName").value = settings.apiName || "";
       setModal.classList.add("open");
       setBackdrop.classList.add("open");
     }
@@ -1355,7 +1438,8 @@
     function saveSettings() {
       settings.endpoint = document.getElementById("setEndpoint").value.trim();
       settings.token = document.getElementById("setToken").value.trim();
-      if (db) idbPut({ endpoint: settings.endpoint, token: settings.token }, SETTINGS_KEY).catch(e => console.warn(e));
+      settings.apiName = document.getElementById("setApiName").value.trim();
+      if (db) idbPut({ endpoint: settings.endpoint, token: settings.token, apiName: settings.apiName }, SETTINGS_KEY).catch(e => console.warn(e));
       closeSettings();
       toast("Настройки сохранены");
     }
@@ -1533,7 +1617,7 @@
         db = await openDB();
         const saved = await idbGet();
         const savedSettings = await idbGet(SETTINGS_KEY);
-        if (savedSettings) settings = { endpoint: savedSettings.endpoint || "", token: savedSettings.token || "" };
+        if (savedSettings) settings = { endpoint: savedSettings.endpoint || "", token: savedSettings.token || "", apiName: savedSettings.apiName || "" };
         if (saved && saved.pages && saved.pages.length) {
           // sanity + migrate legacy Blob photos -> { src, out }
           saved.pages.forEach(p => {
