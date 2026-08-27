@@ -198,6 +198,9 @@
       overflow: hidden;
       box-shadow: var(--shadow);
       touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     .vstack {
@@ -223,6 +226,10 @@
       height: 100%;
       object-fit: cover;
       display: block;
+      pointer-events: none;
+      -webkit-touch-callout: none;
+      -webkit-user-drag: none;
+      user-select: none;
     }
 
     .placeholder {
@@ -736,7 +743,7 @@
   (function () {
     "use strict";
 
-    const APP_VERSION = "0.7"; // bump on each deploy so the on-screen tag changes
+    const APP_VERSION = "0.8"; // bump on each deploy so the on-screen tag changes
 
     /* ============================ Storage (IndexedDB) ============================ */
     const DB_NAME = "photocomic";
@@ -927,11 +934,18 @@
       go.className = "mini-btn go";
       go.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M18 6l-2.5 2.5M6 18l2.5-2.5M18 18l-2.5-2.5"/></svg> Обработать';
       go.addEventListener("click", () => processPhoto(index, state.pages[index].selected));
+      const dl = document.createElement("button");
+      dl.className = "mini-btn";
+      dl.title = "Скачать";
+      dl.setAttribute("aria-label", "Скачать");
+      dl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>';
+      dl.addEventListener("click", () => downloadPhoto(index, state.pages[index].selected));
       const del = document.createElement("button");
       del.className = "mini-btn danger";
       del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg> дубль';
       del.addEventListener("click", () => deleteCurrentVariant(index));
       tools.appendChild(go);
+      tools.appendChild(dl);
       tools.appendChild(del);
       wrap.appendChild(tools);
 
@@ -1105,6 +1119,27 @@
       const newSection = buildPage(page, index);
       track.replaceChild(newSection, track.children[index]);
       toast("Дубль удалён");
+    }
+
+    async function downloadPhoto(pageIndex, photoIndex) {
+      const page = state.pages[pageIndex];
+      const photo = page && page.photos[photoIndex];
+      const blob = photo && photoBlob(photo);
+      if (!blob) { toast("Нет кадра для сохранения"); return; }
+      let ext = ((blob.type || "").split("/")[1] || "jpg").replace("jpeg", "jpg").replace("svg+xml", "svg");
+      const name = "photocomic-page" + (pageIndex + 1) + (photo.out ? "-ai" : "") + "." + ext;
+      const file = new File([blob], name, { type: blob.type || "image/jpeg" });
+      // mobile: system share sheet (Save Image / share); desktop: direct download
+      if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+        try { await navigator.share({ files: [file], title: "Кадр" }); return; }
+        catch (err) { if (err && err.name === "AbortError") return; }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast("Сохранено");
     }
 
     /* ============================ Camera ============================ */
@@ -1561,6 +1596,8 @@
 
     /* ============================ Wire up ============================ */
     document.getElementById("verTag").textContent = "v" + APP_VERSION;
+    // block the native "save image" callout / context menu over the frame
+    deck.addEventListener("contextmenu", (e) => { if (e.target.closest(".frame")) e.preventDefault(); });
     document.getElementById("shutterBtn").addEventListener("click", openCamera);
     document.getElementById("galleryBtn").addEventListener("click", () => { importTargetPage = currentPage; fileInput.click(); });
     document.getElementById("addPageBtn").addEventListener("click", addPage);
