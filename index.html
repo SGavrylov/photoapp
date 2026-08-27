@@ -321,7 +321,53 @@
     }
     .mini-btn:active { transform: translate(2px,2px); box-shadow: none; }
     .mini-btn.danger { background: var(--accent); color: #fff; }
+    .mini-btn.go { background: var(--accent-2); color: var(--ink); }
     .mini-btn svg { width: 14px; height: 14px; }
+
+    /* "processed" badge */
+    .ai-badge {
+      position: absolute;
+      top: -2px; right: -4px;
+      z-index: 4;
+      font-family: var(--body);
+      font-weight: 800;
+      font-size: 12px;
+      color: var(--ink);
+      background: var(--accent-2);
+      border: 2.5px solid var(--ink);
+      border-radius: 10px;
+      padding: 1px 8px 2px;
+      box-shadow: 2px 2px 0 rgba(20,17,13,.9);
+      pointer-events: none;
+    }
+    .ai-badge.peek { background: #fff; }
+    .ai-badge.hidden { display: none; }
+
+    /* processing overlay */
+    .proc-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      border-radius: 16px;
+      background: rgba(12,10,7,.68);
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+    }
+    .proc-overlay.hidden { display: none; }
+    .spinner {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: 4px solid rgba(255,255,255,.25);
+      border-top-color: var(--accent-2);
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ---------- Caption box ---------- */
     .caption {
@@ -497,7 +543,46 @@
     .sheet-btn:active { transform: translate(3px,3px); box-shadow: none; }
     .sheet-btn svg { width: 22px; height: 22px; flex: 0 0 auto; }
     .sheet-btn.danger { color: var(--accent); border-color: var(--accent); }
+    .sheet-btn.go { background: var(--accent-2); }
+    .sheet-btn.primary { background: var(--ink); color: #fff; justify-content: center; }
     .sheet-btn small { display:block; font-weight: 600; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    /* HF settings modal */
+    .modal {
+      position: fixed; left: 50%; top: 50%; z-index: 42;
+      transform: translate(-50%, -46%) scale(.96);
+      width: min(440px, calc(100vw - 32px));
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      background: var(--paper);
+      border: 3px solid var(--ink);
+      border-radius: 20px;
+      padding: 18px 18px 20px;
+      box-shadow: 6px 6px 0 rgba(20,17,13,.9);
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s, transform .2s;
+    }
+    .modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+    .modal h3 { margin: 0 0 14px; font-family: var(--display); letter-spacing: 1px; font-size: 22px; }
+    .field {
+      display: block;
+      font-weight: 800; font-size: 13px; color: var(--ink);
+      margin-bottom: 12px;
+    }
+    .field small { font-weight: 600; color: var(--muted); }
+    .field input {
+      display: block; width: 100%; margin-top: 6px;
+      border: 2.5px solid var(--ink); border-radius: 12px;
+      padding: 11px 12px;
+      font-family: var(--body); font-size: 15px; font-weight: 600;
+      background: var(--panel); color: var(--ink);
+      -webkit-user-select: text; user-select: text;
+    }
+    .field input:focus { outline: none; border-color: var(--accent); }
+    .hint-text { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 4px 0 16px; }
+    .hint-text code { background: var(--panel); border: 1px solid var(--border); border-radius: 5px; padding: 0 4px; font-size: 11px; word-break: break-word; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions .sheet-btn { margin-bottom: 0; justify-content: center; }
 
     .toast {
       position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 110px);
@@ -598,10 +683,35 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
       <div>Удалить эту страницу</div>
     </button>
+    <button class="sheet-btn go" id="mProcessAll">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M18 6l-2.5 2.5M6 18l2.5-2.5M18 18l-2.5-2.5"/></svg>
+      <div>Обработать все страницы<small>Отправить выбранные кадры в модель</small></div>
+    </button>
+    <button class="sheet-btn" id="mSettings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <div>Обработка (Hugging Face)<small>Эндпоинт модели и токен</small></div>
+    </button>
     <button class="sheet-btn danger" id="mReset">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
       <div>Начать заново<small>Вернуть 3 пустые страницы</small></div>
     </button>
+  </div>
+
+  <!-- HF settings modal -->
+  <div class="sheet-backdrop" id="setBackdrop"></div>
+  <div class="modal" id="setModal">
+    <h3>Обработка (Hugging Face)</h3>
+    <label class="field">Эндпоинт модели (URL)
+      <input id="setEndpoint" type="url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="https://api-inference.huggingface.co/models/…" />
+    </label>
+    <label class="field">Токен HF <small>хранится только на устройстве</small>
+      <input id="setToken" type="password" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="hf_…" />
+    </label>
+    <p class="hint-text">Кадр уходит POST-запросом как JSON <code>{ inputs: base64, parameters: { prompt } }</code> с заголовком <code>Authorization: Bearer</code>. Ответ — картинка или JSON с base64.</p>
+    <div class="modal-actions">
+      <button class="sheet-btn" id="setCancel"><div>Отмена</div></button>
+      <button class="sheet-btn primary" id="setSave"><div>Сохранить</div></button>
+    </div>
   </div>
 
   <input id="fileInput" type="file" accept="image/*" />
@@ -626,22 +736,23 @@
         req.onerror = () => reject(req.error);
       });
     }
-    function idbGet() {
+    function idbGet(key) {
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readonly");
-        const req = tx.objectStore(STORE).get(KEY);
+        const req = tx.objectStore(STORE).get(key || KEY);
         req.onsuccess = () => resolve(req.result || null);
         req.onerror = () => reject(req.error);
       });
     }
-    function idbPut(value) {
+    function idbPut(value, key) {
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readwrite");
-        tx.objectStore(STORE).put(value, KEY);
+        tx.objectStore(STORE).put(value, key || KEY);
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
     }
+    const SETTINGS_KEY = "settings";
 
     /* ============================ State ============================ */
     const DEFAULT_PROMPTS = [
@@ -650,12 +761,18 @@
       "Кадр 3 — Развязка: финал истории. Реакция героя."
     ];
 
-    // state.pages: [{ id, prompt, selected, photos: [Blob, ...] }]
+    // state.pages: [{ id, prompt, selected, photos: [{ src: Blob, out: Blob|null }, ...] }]
     let state = { pages: [] };
     let currentPage = 0;
+    let settings = { endpoint: "", token: "" };
     const urlCache = new Map(); // Blob -> objectURL
 
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+    // a photo holds the original ("src") and, once processed, the result ("out")
+    function photoObj(srcBlob) { return { src: srcBlob, out: null }; }
+    function photoBlob(p) { return (p && p.out) ? p.out : (p && p.src) || null; }
+    function releasePhoto(p) { if (!p) return; releaseUrl(p.src); if (p.out) releaseUrl(p.out); }
 
     function blankPage(prompt) {
       return { id: uid(), prompt: prompt || "", selected: 0, photos: [] };
@@ -743,11 +860,11 @@
       } else {
         vstack = document.createElement("div");
         vstack.className = "vstack";
-        page.photos.forEach((blob) => {
+        page.photos.forEach((photo) => {
           const v = document.createElement("div");
           v.className = "variant";
           const img = document.createElement("img");
-          img.src = urlFor(blob);
+          img.src = urlFor(photoBlob(photo));
           img.alt = "Кадр " + (index + 1);
           v.appendChild(img);
           vstack.appendChild(v);
@@ -769,6 +886,18 @@
       }
       wrap.appendChild(rail);
 
+      // "processed" badge (shown when current take has an AI result)
+      const badge = document.createElement("div");
+      badge.className = "ai-badge" + (photoBlob(page.photos[page.selected]) && page.photos[page.selected] && page.photos[page.selected].out ? "" : " hidden");
+      badge.innerHTML = "✨ AI";
+      wrap.appendChild(badge);
+
+      // processing overlay
+      const overlay = document.createElement("div");
+      overlay.className = "proc-overlay hidden";
+      overlay.innerHTML = '<div class="spinner"></div><span>Обработка…</span>';
+      wrap.appendChild(overlay);
+
       // swipe hint
       const hint = document.createElement("div");
       hint.className = "swipe-hint" + (page.photos.length > 1 ? "" : " hidden");
@@ -778,10 +907,15 @@
       // per-variant tools (delete current dubl)
       const tools = document.createElement("div");
       tools.className = "variant-tools" + (page.photos.length ? "" : " hidden");
+      const go = document.createElement("button");
+      go.className = "mini-btn go";
+      go.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M18 6l-2.5 2.5M6 18l2.5-2.5M18 18l-2.5-2.5"/></svg> Обработать';
+      go.addEventListener("click", () => processPhoto(index, state.pages[index].selected));
       const del = document.createElement("button");
       del.className = "mini-btn danger";
       del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg> дубль';
       del.addEventListener("click", () => deleteCurrentVariant(index));
+      tools.appendChild(go);
       tools.appendChild(del);
       wrap.appendChild(tools);
 
@@ -817,12 +951,36 @@
       section.appendChild(cap);
       requestAnimationFrame(autoSize);
 
+      // desktop: press-and-hold to peek the original under a processed frame
+      frame.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        const cur = page.photos[page.selected];
+        if (!cur || !cur.out) return;
+        const imgs = frame.querySelectorAll(".variant img");
+        const im = imgs[page.selected];
+        if (!im) return;
+        im.src = urlFor(cur.src);
+        const badgeEl = wrap.querySelector(".ai-badge");
+        if (badgeEl) { badgeEl.textContent = "оригинал"; badgeEl.classList.add("peek"); }
+        const restore = () => {
+          im.src = urlFor(photoBlob(cur));
+          if (badgeEl) { badgeEl.innerHTML = "✨ AI"; badgeEl.classList.remove("peek"); }
+          window.removeEventListener("mouseup", restore);
+          frame.removeEventListener("mouseleave", restore);
+        };
+        window.addEventListener("mouseup", restore);
+        frame.addEventListener("mouseleave", restore);
+      });
+
       return section;
     }
 
     function updateVariantUI(section, page) {
       const rail = section.querySelector(".variant-rail");
       rail.querySelectorAll(".vdot").forEach((d, i) => d.classList.toggle("on", i === page.selected));
+      const badge = section.querySelector(".ai-badge");
+      const cur = page.photos[page.selected];
+      if (badge) badge.classList.toggle("hidden", !(cur && cur.out));
       const hint = section.querySelector(".swipe-hint");
       if (page.photos.length > 1) {
         hint.classList.remove("hidden");
@@ -892,7 +1050,7 @@
     /* ============================ Photo actions ============================ */
     function addPhotoToCurrent(blob) {
       const page = state.pages[currentPage];
-      page.photos.push(blob);
+      page.photos.push(photoObj(blob));
       page.selected = page.photos.length - 1;
       persist(true);
       // rebuild only this page for correctness, then scroll to new variant
@@ -906,7 +1064,7 @@
       const page = state.pages[index];
       if (!page.photos.length) return;
       const removed = page.photos.splice(page.selected, 1)[0];
-      releaseUrl(removed);
+      releasePhoto(removed);
       if (page.selected >= page.photos.length) page.selected = Math.max(0, page.photos.length - 1);
       persist(true);
       const newSection = buildPage(page, index);
@@ -1031,7 +1189,7 @@
       if (state.pages.length <= 1) { toast("Нужна хотя бы одна страница"); return; }
       const page = state.pages[currentPage];
       if (page.photos.length && !confirm("Удалить страницу " + (currentPage + 1) + " со всеми кадрами?")) return;
-      page.photos.forEach(releaseUrl);
+      page.photos.forEach(releasePhoto);
       state.pages.splice(currentPage, 1);
       if (currentPage > state.pages.length - 1) currentPage = state.pages.length - 1;
       persist(true);
@@ -1042,7 +1200,7 @@
 
     function clearPhotos() {
       const page = state.pages[currentPage];
-      page.photos.forEach(releaseUrl);
+      page.photos.forEach(releasePhoto);
       page.photos = [];
       page.selected = 0;
       persist(true);
@@ -1052,12 +1210,154 @@
     }
 
     function resetAll() {
-      state.pages.forEach(p => p.photos.forEach(releaseUrl));
+      state.pages.forEach(p => p.photos.forEach(releasePhoto));
       state = freshBook();
       currentPage = 0;
       persist(true);
       render();
       toast("Новый комикс");
+    }
+
+    /* ============================ Hugging Face processing ============================ */
+    let processing = false;
+
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(blob);
+      });
+    }
+    function base64ToBlob(b64, type) {
+      const bin = atob(b64.replace(/\s/g, ""));
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return new Blob([arr], { type: type || "image/png" });
+    }
+    // best-effort: pull a base64 image string out of common HF JSON shapes
+    function findBase64(data) {
+      if (!data) return null;
+      if (typeof data === "string") {
+        const s = data.replace(/^data:image\/\w+;base64,/, "");
+        return s.length > 100 ? s : null;
+      }
+      if (Array.isArray(data)) { for (const it of data) { const b = findBase64(it); if (b) return b; } return null; }
+      if (typeof data === "object") {
+        const keys = ["generated_image", "image", "images", "output", "data", "b64_json", "generated_images"];
+        for (const k of keys) if (k in data) { const b = findBase64(data[k]); if (b) return b; }
+      }
+      return null;
+    }
+
+    async function callHF(srcBlob, prompt) {
+      if (!settings.endpoint) throw new Error("no-endpoint");
+      const base64 = await blobToBase64(srcBlob);
+      const headers = { "Content-Type": "application/json", "Accept": "image/png" };
+      if (settings.token) headers["Authorization"] = "Bearer " + settings.token;
+      const body = JSON.stringify({ inputs: base64, parameters: prompt ? { prompt: prompt } : {} });
+      const res = await fetch(settings.endpoint, { method: "POST", headers: headers, body: body });
+      if (!res.ok) {
+        let detail = "";
+        try { detail = (await res.text()).slice(0, 300); } catch (e) {}
+        throw new Error("HTTP " + res.status + (detail ? ": " + detail : ""));
+      }
+      const ctype = res.headers.get("content-type") || "";
+      if (ctype.indexOf("image/") === 0) return await res.blob();
+      const txt = await res.text();
+      let data; try { data = JSON.parse(txt); } catch (e) { data = txt; }
+      const b64 = findBase64(data);
+      if (b64) return base64ToBlob(b64, "image/png");
+      throw new Error("Ответ без изображения: " + String(txt).slice(0, 160));
+    }
+
+    function setOverlay(pageIndex, on, label) {
+      const section = track && track.children[pageIndex];
+      if (!section) return;
+      const ov = section.querySelector(".proc-overlay");
+      if (!ov) return;
+      if (label) { const s = ov.querySelector("span"); if (s) s.textContent = label; }
+      ov.classList.toggle("hidden", !on);
+    }
+
+    async function applyResult(pageIndex, photo, out) {
+      if (photo.out) releaseUrl(photo.out);
+      photo.out = out;
+      persist(true);
+      const page = state.pages[pageIndex];
+      const newSection = buildPage(page, pageIndex);
+      if (track && track.children[pageIndex]) track.replaceChild(newSection, track.children[pageIndex]);
+    }
+
+    async function processPhoto(pageIndex, photoIndex) {
+      if (processing) { toast("Уже идёт обработка…"); return; }
+      const page = state.pages[pageIndex];
+      const photo = page && page.photos[photoIndex];
+      if (!photo) return;
+      if (!settings.endpoint) { toast("Сначала укажите эндпоинт HF"); openSettings(); return; }
+      processing = true;
+      setOverlay(pageIndex, true, "Обработка…");
+      try {
+        const out = await callHF(photo.src, page.prompt || "");
+        await applyResult(pageIndex, photo, out);
+        toast("Готово ✨");
+      } catch (err) {
+        console.warn(err);
+        setOverlay(pageIndex, false);
+        toast("Ошибка: " + (err && err.message || err));
+      } finally {
+        processing = false;
+      }
+    }
+
+    async function processAll() {
+      if (processing) { toast("Уже идёт обработка…"); return; }
+      if (!settings.endpoint) { toast("Сначала укажите эндпоинт HF"); openSettings(); return; }
+      const jobs = [];
+      state.pages.forEach((p, i) => { if (p.photos.length) jobs.push(i); });
+      if (!jobs.length) { toast("Нет кадров для обработки"); return; }
+      processing = true;
+      let ok = 0, failed = 0;
+      for (let n = 0; n < jobs.length; n++) {
+        const pi = jobs[n];
+        const page = state.pages[pi];
+        const photo = page.photos[page.selected];
+        if (!photo) continue;
+        setOverlay(pi, true, "Обработка " + (n + 1) + "/" + jobs.length);
+        toast("Батч: " + (n + 1) + "/" + jobs.length);
+        try {
+          const out = await callHF(photo.src, page.prompt || "");
+          await applyResult(pi, photo, out);
+          ok++;
+        } catch (err) {
+          console.warn("batch item failed on page", pi, err);
+          failed++;
+          setOverlay(pi, false);
+        }
+      }
+      processing = false;
+      toast("Батч готов: " + ok + "/" + jobs.length + (failed ? " (ошибок " + failed + ")" : ""));
+    }
+
+    /* ============================ Settings (HF) ============================ */
+    const setModal = document.getElementById("setModal");
+    const setBackdrop = document.getElementById("setBackdrop");
+    function openSettings() {
+      document.getElementById("setEndpoint").value = settings.endpoint || "";
+      document.getElementById("setToken").value = settings.token || "";
+      setModal.classList.add("open");
+      setBackdrop.classList.add("open");
+    }
+    function closeSettings() {
+      setModal.classList.remove("open");
+      setBackdrop.classList.remove("open");
+    }
+    function saveSettings() {
+      settings.endpoint = document.getElementById("setEndpoint").value.trim();
+      settings.token = document.getElementById("setToken").value.trim();
+      if (db) idbPut({ endpoint: settings.endpoint, token: settings.token }, SETTINGS_KEY).catch(e => console.warn(e));
+      closeSettings();
+      toast("Настройки сохранены");
     }
 
     /* ============================ Menu sheet ============================ */
@@ -1082,10 +1382,16 @@
     document.getElementById("mAddPage").addEventListener("click", () => { closeSheet(); addPage(); });
     document.getElementById("mClearPhotos").addEventListener("click", () => { closeSheet(); clearPhotos(); });
     document.getElementById("mDeletePage").addEventListener("click", () => { closeSheet(); deletePage(); });
+    document.getElementById("mProcessAll").addEventListener("click", () => { closeSheet(); processAll(); });
+    document.getElementById("mSettings").addEventListener("click", () => { closeSheet(); openSettings(); });
     document.getElementById("mReset").addEventListener("click", () => {
       closeSheet();
       if (confirm("Начать заново? Все кадры будут удалены, останутся 3 пустые страницы с подсказками.")) resetAll();
     });
+
+    setBackdrop.addEventListener("click", closeSettings);
+    document.getElementById("setCancel").addEventListener("click", closeSettings);
+    document.getElementById("setSave").addEventListener("click", saveSettings);
 
     // keyboard arrows on desktop
     window.addEventListener("keydown", (e) => {
@@ -1116,6 +1422,15 @@
     (function installSwipe() {
       let sx = 0, sy = 0, axis = null, active = false, dxCur = 0, dyCur = 0;
       let vs = null, vsPageIndex = -1, vsFrameH = 1, vsPage = null;
+      let peekTimer = null, peekImg = null, peekPhoto = null, peekBadge = null, peeking = false;
+      function clearPeek() {
+        if (peekTimer) { clearTimeout(peekTimer); peekTimer = null; }
+        if (peeking && peekImg && peekPhoto) {
+          peekImg.src = urlFor(photoBlob(peekPhoto));
+          if (peekBadge) { peekBadge.innerHTML = "✨ AI"; peekBadge.classList.remove("peek"); }
+        }
+        peeking = false; peekImg = null; peekPhoto = null; peekBadge = null;
+      }
 
       deck.addEventListener("touchstart", (e) => {
         // dots and the delete-take button manage their own taps
@@ -1135,6 +1450,24 @@
         } else {
           vs = null;
         }
+        // long-press to peek the original under a processed frame
+        clearPeek();
+        if (frameEl && vsPage && vsPage.photos.length) {
+          const cur = vsPage.photos[vsPage.selected];
+          if (cur && cur.out) {
+            const imgs = frameEl.querySelectorAll(".variant img");
+            peekImg = imgs[vsPage.selected] || null;
+            peekPhoto = cur;
+            peekBadge = frameEl.parentElement.querySelector(".ai-badge");
+            peekTimer = setTimeout(() => {
+              if (peekImg && peekPhoto) {
+                peekImg.src = urlFor(peekPhoto.src);
+                peeking = true;
+                if (peekBadge) { peekBadge.textContent = "оригинал"; peekBadge.classList.add("peek"); }
+              }
+            }, 280);
+          }
+        }
         if (track) track.style.transition = "none";
         if (vs) vs.style.transition = "none";
       }, { passive: true });
@@ -1143,6 +1476,7 @@
         if (!active) return;
         const t = e.touches[0];
         const dx = t.clientX - sx, dy = t.clientY - sy;
+        if ((peekTimer || peeking) && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) clearPeek();
         if (axis === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
           axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
         }
@@ -1167,6 +1501,7 @@
       }, { passive: false });
 
       const end = () => {
+        clearPeek();
         if (!active) return;
         active = false;
         if (track) track.style.transition = "";
@@ -1197,10 +1532,16 @@
       try {
         db = await openDB();
         const saved = await idbGet();
+        const savedSettings = await idbGet(SETTINGS_KEY);
+        if (savedSettings) settings = { endpoint: savedSettings.endpoint || "", token: savedSettings.token || "" };
         if (saved && saved.pages && saved.pages.length) {
-          // sanity: ensure fields
+          // sanity + migrate legacy Blob photos -> { src, out }
           saved.pages.forEach(p => {
             if (!Array.isArray(p.photos)) p.photos = [];
+            p.photos = p.photos.map(ph =>
+              (ph instanceof Blob) ? { src: ph, out: null }
+                : { src: ph.src, out: ph.out || null }
+            ).filter(ph => ph.src instanceof Blob);
             if (typeof p.selected !== "number") p.selected = 0;
             if (typeof p.prompt !== "string") p.prompt = "";
             if (p.selected > p.photos.length - 1) p.selected = Math.max(0, p.photos.length - 1);
