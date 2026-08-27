@@ -103,6 +103,7 @@
       overflow-x: auto;
       scrollbar-width: none;
       max-width: 45%;
+      min-width: 0;
     }
     .pager-dots::-webkit-scrollbar { display: none; }
     .dot {
@@ -114,6 +115,18 @@
       transition: transform .18s, background .18s;
     }
     .dot.active { background: var(--accent); transform: scale(1.35); }
+    .page-counter {
+      font-family: var(--body);
+      font-weight: 800;
+      font-size: 14px;
+      color: var(--ink);
+      background: var(--panel);
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+      padding: 3px 11px;
+      white-space: nowrap;
+      box-shadow: 2px 2px 0 rgba(20,17,13,.9);
+    }
 
     .icon-btn {
       width: 42px; height: 42px;
@@ -135,22 +148,22 @@
 
     /* ---------- Deck (horizontal pages) ---------- */
     .deck {
-      display: flex;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scroll-snap-type: x mandatory;
-      scroll-behavior: smooth;
-      scrollbar-width: none;
-      touch-action: pan-x pan-y;
+      position: relative;
+      overflow: hidden;
+      touch-action: pan-y;
     }
-    .deck::-webkit-scrollbar { display: none; }
+
+    .track {
+      display: flex;
+      height: 100%;
+      will-change: transform;
+      transition: transform .3s cubic-bezier(.22,.61,.36,1);
+    }
 
     .page {
       flex: 0 0 100%;
       width: 100%;
       height: 100%;
-      scroll-snap-align: center;
-      scroll-snap-stop: always;
       display: grid;
       grid-template-rows: 1fr auto;
       gap: 12px;
@@ -183,7 +196,7 @@
       background: repeating-linear-gradient(45deg,#111 0 10px,#161616 10px 20px);
       overflow: hidden;
       box-shadow: var(--shadow);
-      touch-action: pan-x;
+      touch-action: none;
     }
 
     .vstack {
@@ -388,6 +401,10 @@
       width: 88px;
     }
     .foot-side span { font-size: 11px; font-weight: 800; color: var(--muted); }
+    .page-btns { display: flex; gap: 8px; }
+    .icon-btn.small { width: 38px; height: 38px; border-radius: 11px; }
+    .icon-btn.small svg { width: 19px; height: 19px; }
+    .icon-btn:disabled { opacity: .4; box-shadow: none; pointer-events: none; }
 
     /* ---------- Camera modal ---------- */
     .cam {
@@ -526,10 +543,15 @@
       <button class="shutter" id="shutterBtn" aria-label="Снять кадр"></button>
 
       <div class="foot-side">
-        <button class="icon-btn" id="addPageBtn" aria-label="Добавить страницу">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-        <span>Страница</span>
+        <div class="page-btns">
+          <button class="icon-btn small" id="delPageBtn" aria-label="Удалить страницу">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
+          </button>
+          <button class="icon-btn small" id="addPageBtn" aria-label="Добавить страницу">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+        <span id="pageLabel">Стр. 1</span>
       </div>
     </footer>
   </div>
@@ -660,6 +682,7 @@
 
     /* ============================ DOM refs ============================ */
     const deck = document.getElementById("deck");
+    let track = null;
     const dotsEl = document.getElementById("dots");
     const toastEl = document.getElementById("toast");
     const work = document.getElementById("work");
@@ -675,17 +698,21 @@
 
     /* ============================ Render ============================ */
     function render() {
-      // rebuild deck
-      deck.innerHTML = "";
-      state.pages.forEach((page, index) => deck.appendChild(buildPage(page, index)));
-      renderDots();
       // clamp current page
       if (currentPage > state.pages.length - 1) currentPage = state.pages.length - 1;
       if (currentPage < 0) currentPage = 0;
-      // restore horizontal scroll to current page (after layout)
-      requestAnimationFrame(() => {
-        deck.scrollLeft = currentPage * deck.clientWidth;
-      });
+      // rebuild deck as a single transform-driven track
+      deck.innerHTML = "";
+      track = document.createElement("div");
+      track.className = "track";
+      state.pages.forEach((page, index) => track.appendChild(buildPage(page, index)));
+      deck.appendChild(track);
+      renderDots();
+      updatePageControls();
+      // position without animation
+      track.style.transition = "none";
+      track.style.transform = "translateX(" + (-currentPage * 100) + "%)";
+      requestAnimationFrame(() => { if (track) track.style.transition = ""; });
     }
 
     function buildPage(page, index) {
@@ -790,48 +817,6 @@
       section.appendChild(cap);
       requestAnimationFrame(autoSize);
 
-      // vertical swipe to switch takes ("dubli")
-      if (page.photos.length > 1 && vstack) {
-        let startY = 0, startX = 0, curDy = 0, axis = null, active = false;
-        frame.addEventListener("touchstart", (e) => {
-          const t = e.touches[0];
-          startY = t.clientY; startX = t.clientX; curDy = 0; axis = null; active = true;
-          vstack.style.transition = "none";
-        }, { passive: true });
-        frame.addEventListener("touchmove", (e) => {
-          if (!active) return;
-          const t = e.touches[0];
-          const dy = t.clientY - startY, dx = t.clientX - startX;
-          if (axis === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-            axis = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
-          }
-          if (axis === "y") {
-            e.preventDefault();
-            curDy = dy;
-            const h = frame.clientHeight || 1;
-            const min = -(page.photos.length - 1) * h - h * 0.18;
-            const max = h * 0.18;
-            const move = Math.max(min, Math.min(max, -page.selected * h + dy));
-            vstack.style.transform = "translateY(" + move + "px)";
-          }
-        }, { passive: false });
-        const endDrag = () => {
-          if (!active) return;
-          active = false;
-          vstack.style.transition = "";
-          if (axis === "y") {
-            const h = frame.clientHeight || 1;
-            const threshold = Math.min(40, h * 0.12);
-            let idx = page.selected;
-            if (curDy <= -threshold) idx++;
-            else if (curDy >= threshold) idx--;
-            setVariant(index, idx);
-          }
-        };
-        frame.addEventListener("touchend", endDrag, { passive: true });
-        frame.addEventListener("touchcancel", endDrag, { passive: true });
-      }
-
       return section;
     }
 
@@ -849,7 +834,7 @@
 
     function renderVariant(pageIndex) {
       const page = state.pages[pageIndex];
-      const section = deck.children[pageIndex];
+      const section = track && track.children[pageIndex];
       if (!page || !section) return;
       const vstack = section.querySelector(".vstack");
       if (vstack) vstack.style.transform = "translateY(" + (-page.selected * 100) + "%)";
@@ -864,43 +849,45 @@
       renderVariant(pageIndex);
     }
 
+    const DOTS_MAX = 7;
     function renderDots() {
       dotsEl.innerHTML = "";
-      state.pages.forEach((_, i) => {
-        const d = document.createElement("div");
-        d.className = "dot" + (i === currentPage ? " active" : "");
-        d.addEventListener("click", () => goToPage(i));
-        dotsEl.appendChild(d);
-      });
+      if (state.pages.length > DOTS_MAX) {
+        const c = document.createElement("div");
+        c.className = "page-counter";
+        c.textContent = (currentPage + 1) + " / " + state.pages.length;
+        dotsEl.appendChild(c);
+      } else {
+        state.pages.forEach((_, i) => {
+          const d = document.createElement("div");
+          d.className = "dot" + (i === currentPage ? " active" : "");
+          d.addEventListener("click", () => goToPage(i));
+          dotsEl.appendChild(d);
+        });
+      }
     }
 
     function goToPage(i) {
       currentPage = Math.max(0, Math.min(i, state.pages.length - 1));
-      deck.scrollTo({ left: currentPage * deck.clientWidth, behavior: "smooth" });
+      if (track) track.style.transform = "translateX(" + (-currentPage * 100) + "%)";
       syncDots();
+      updatePageControls();
     }
 
     function syncDots() {
+      const counter = dotsEl.querySelector(".page-counter");
+      if (counter) { counter.textContent = (currentPage + 1) + " / " + state.pages.length; return; }
       dotsEl.querySelectorAll(".dot").forEach((d, i) => d.classList.toggle("active", i === currentPage));
-      // keep active dot visible
       const active = dotsEl.children[currentPage];
       if (active) active.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
 
-    // track horizontal page via scroll
-    let scrollRaf = null;
-    deck.addEventListener("scroll", () => {
-      if (scrollRaf) return;
-      scrollRaf = requestAnimationFrame(() => {
-        scrollRaf = null;
-        const w = deck.clientWidth || 1;
-        const idx = Math.round(deck.scrollLeft / w);
-        if (idx !== currentPage && idx >= 0 && idx < state.pages.length) {
-          currentPage = idx;
-          syncDots();
-        }
-      });
-    }, { passive: true });
+    function updatePageControls() {
+      const del = document.getElementById("delPageBtn");
+      if (del) del.disabled = state.pages.length <= 1;
+      const lbl = document.getElementById("pageLabel");
+      if (lbl) lbl.textContent = "Стр. " + (currentPage + 1);
+    }
 
     /* ============================ Photo actions ============================ */
     function addPhotoToCurrent(blob) {
@@ -909,9 +896,9 @@
       page.selected = page.photos.length - 1;
       persist(true);
       // rebuild only this page for correctness, then scroll to new variant
-      const oldSection = deck.children[currentPage];
+      const oldSection = track.children[currentPage];
       const newSection = buildPage(page, currentPage);
-      deck.replaceChild(newSection, oldSection);
+      track.replaceChild(newSection, oldSection);
       toast(page.photos.length > 1 ? "Добавлен дубль " + page.photos.length : "Кадр добавлен");
     }
 
@@ -923,7 +910,7 @@
       if (page.selected >= page.photos.length) page.selected = Math.max(0, page.photos.length - 1);
       persist(true);
       const newSection = buildPage(page, index);
-      deck.replaceChild(newSection, deck.children[index]);
+      track.replaceChild(newSection, track.children[index]);
       toast("Дубль удалён");
     }
 
@@ -1043,6 +1030,7 @@
     function deletePage() {
       if (state.pages.length <= 1) { toast("Нужна хотя бы одна страница"); return; }
       const page = state.pages[currentPage];
+      if (page.photos.length && !confirm("Удалить страницу " + (currentPage + 1) + " со всеми кадрами?")) return;
       page.photos.forEach(releaseUrl);
       state.pages.splice(currentPage, 1);
       if (currentPage > state.pages.length - 1) currentPage = state.pages.length - 1;
@@ -1059,7 +1047,7 @@
       page.selected = 0;
       persist(true);
       const newSection = buildPage(page, currentPage);
-      deck.replaceChild(newSection, deck.children[currentPage]);
+      track.replaceChild(newSection, track.children[currentPage]);
       toast("Кадры очищены");
     }
 
@@ -1082,6 +1070,7 @@
     document.getElementById("shutterBtn").addEventListener("click", openCamera);
     document.getElementById("galleryBtn").addEventListener("click", () => { importTargetPage = currentPage; fileInput.click(); });
     document.getElementById("addPageBtn").addEventListener("click", addPage);
+    document.getElementById("delPageBtn").addEventListener("click", deletePage);
     document.getElementById("menuBtn").addEventListener("click", openSheet);
 
     document.getElementById("camClose").addEventListener("click", closeCamera);
@@ -1114,14 +1103,94 @@
     });
 
     // keep layout correct on resize/orientation
-    let resizeRaf = null;
     window.addEventListener("resize", () => {
-      if (resizeRaf) return;
-      resizeRaf = requestAnimationFrame(() => {
-        resizeRaf = null;
-        deck.scrollLeft = currentPage * deck.clientWidth;
-      });
+      if (!track) return;
+      track.style.transition = "none";
+      track.style.transform = "translateX(" + (-currentPage * 100) + "%)";
+      requestAnimationFrame(() => { if (track) track.style.transition = ""; });
     });
+
+    /* ============================ Unified swipe controller ============================
+       Left/right = turn page (works anywhere on the deck).
+       Up/down over a photo with 2+ takes = switch take ("dubl"). */
+    (function installSwipe() {
+      let sx = 0, sy = 0, axis = null, active = false, dxCur = 0, dyCur = 0;
+      let vs = null, vsPageIndex = -1, vsFrameH = 1, vsPage = null;
+
+      deck.addEventListener("touchstart", (e) => {
+        // dots and the delete-take button manage their own taps
+        if (e.target.closest(".variant-rail") || e.target.closest(".variant-tools")) {
+          active = false;
+          return;
+        }
+        const t = e.touches[0];
+        sx = t.clientX; sy = t.clientY; axis = null; active = true; dxCur = 0; dyCur = 0;
+        const pageEl = e.target.closest(".page");
+        vsPageIndex = pageEl ? Number(pageEl.dataset.index) : currentPage;
+        vsPage = state.pages[vsPageIndex] || null;
+        const frameEl = e.target.closest(".frame");
+        if (frameEl && vsPage && vsPage.photos.length > 1) {
+          vs = frameEl.querySelector(".vstack");
+          vsFrameH = frameEl.clientHeight || 1;
+        } else {
+          vs = null;
+        }
+        if (track) track.style.transition = "none";
+        if (vs) vs.style.transition = "none";
+      }, { passive: true });
+
+      deck.addEventListener("touchmove", (e) => {
+        if (!active) return;
+        const t = e.touches[0];
+        const dx = t.clientX - sx, dy = t.clientY - sy;
+        if (axis === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+          axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        }
+        if (axis === "x") {
+          e.preventDefault();
+          dxCur = dx;
+          const w = deck.clientWidth || 1;
+          let move = -currentPage * w + dx;
+          const min = -(state.pages.length - 1) * w, max = 0;
+          if (move > max) move = max + (move - max) * 0.35;
+          else if (move < min) move = min + (move - min) * 0.35;
+          if (track) track.style.transform = "translateX(" + move + "px)";
+        } else if (axis === "y" && vs) {
+          e.preventDefault();
+          dyCur = dy;
+          const h = vsFrameH;
+          const min = -(vsPage.photos.length - 1) * h - h * 0.18;
+          const max = h * 0.18;
+          const move = Math.max(min, Math.min(max, -vsPage.selected * h + dy));
+          vs.style.transform = "translateY(" + move + "px)";
+        }
+      }, { passive: false });
+
+      const end = () => {
+        if (!active) return;
+        active = false;
+        if (track) track.style.transition = "";
+        if (vs) vs.style.transition = "";
+        if (axis === "x") {
+          const w = deck.clientWidth || 1;
+          const threshold = Math.min(60, w * 0.16);
+          let target = currentPage;
+          if (dxCur <= -threshold) target++;
+          else if (dxCur >= threshold) target--;
+          goToPage(target);
+        } else if (axis === "y" && vs) {
+          const h = vsFrameH;
+          const threshold = Math.min(40, h * 0.12);
+          let idx = vsPage.selected;
+          if (dyCur <= -threshold) idx++;
+          else if (dyCur >= threshold) idx--;
+          setVariant(vsPageIndex, idx);
+        }
+        vs = null;
+      };
+      deck.addEventListener("touchend", end, { passive: true });
+      deck.addEventListener("touchcancel", end, { passive: true });
+    })();
 
     /* ============================ Boot ============================ */
     async function boot() {
