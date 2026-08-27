@@ -1352,20 +1352,39 @@
       if (imgIdx >= 0) values[imgIdx] = handle_file(srcBlob);
       if (txtIdx >= 0 && prompt) values[txtIdx] = prompt;
 
-      // use submit() so we can surface queue/generation status and cancel
-      const data = await new Promise((resolve, reject) => {
-        let sub, settled = false, timer;
-        const finish = (fn, arg) => { if (settled) return; settled = true; clearTimeout(timer); if (curSubmission === sub) curSubmission = null; fn(arg); };
-        try { sub = app.submit(epName, values); }
-        catch (e) { reject(e); return; }
+      // submit() streams status; the return type differs across client versions,
+      // so support async-iterable (current), .on (older) and predict() (fallback).
+      let sub = null;
+      try { sub = app.submit(epName, values); } catch (e) { sub = null; }
+      let data = null;
+      if (sub && typeof sub[Symbol.asyncIterator] === "function") {
         curSubmission = sub;
-        timer = setTimeout(() => { try { sub.cancel(); } catch (e) {} finish(reject, new Error("Таймаут: модель не ответила за 3 минуты")); }, 180000);
-        sub.on("status", (s) => {
-          if (onStatus) onStatus(s);
-          if (s && s.stage === "error") finish(reject, new Error(s.message || "Ошибка на стороне Space"));
+        const timer = setTimeout(() => { try { sub.cancel && sub.cancel(); } catch (e) {} }, 180000);
+        try {
+          for await (const msg of sub) {
+            if (!msg) continue;
+            if (msg.type === "status") {
+              if (onStatus) onStatus(msg);
+              if (msg.stage === "error") throw new Error(msg.message || "Ошибка на стороне Space");
+            } else if (msg.type === "data") {
+              data = msg.data;
+            }
+          }
+        } finally { clearTimeout(timer); if (curSubmission === sub) curSubmission = null; }
+      } else if (sub && typeof sub.on === "function") {
+        curSubmission = sub;
+        data = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => { try { sub.cancel(); } catch (e) {} reject(new Error("Таймаут: модель не ответила за 3 минуты")); }, 180000);
+          sub.on("status", (s) => { if (onStatus) onStatus(s); if (s && s.stage === "error") { clearTimeout(timer); reject(new Error(s.message || "Ошибка на стороне Space")); } });
+          sub.on("data", (d) => { clearTimeout(timer); resolve(d && d.data); });
         });
-        sub.on("data", (d) => { finish(resolve, d && d.data); });
-      });
+        if (curSubmission === sub) curSubmission = null;
+      } else {
+        if (onStatus) onStatus({ stage: "generating" });
+        const r = await app.predict(epName, values);
+        data = r && r.data;
+      }
+      if (data == null) throw new Error("Space не вернул данные (возможно, отменено или таймаут)");
 
       let url = gFindImage(data);
       if (!url) throw new Error("Space вернул ответ без картинки: " + JSON.stringify(data).slice(0, 160));
