@@ -368,6 +368,13 @@
       animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .proc-overlay span { padding: 0 12px; text-align: center; }
+    .proc-msg { color: #fff; font-weight: 800; font-size: 12.5px; line-height: 1.45; max-height: 64%; overflow: auto; word-break: break-word; padding: 0 6px; }
+    .proc-cancel {
+      border: 2px solid #fff; background: transparent; color: #fff;
+      border-radius: 10px; padding: 7px 14px; font: inherit; font-weight: 800; font-size: 13px; cursor: pointer;
+    }
+    .proc-cancel:active { transform: translateY(1px); }
 
     /* ---------- Caption box ---------- */
     .caption {
@@ -1223,6 +1230,7 @@
 
     /* ============================ Hugging Face processing ============================ */
     let processing = false;
+    let curSubmission = null;
 
     function blobToBase64(blob) {
       return new Promise((resolve, reject) => {
@@ -1264,12 +1272,13 @@
       if (m) return m[0];
       return url;
     }
-    async function callHF(srcBlob, prompt) {
+    async function callHF(srcBlob, prompt, onStatus) {
       if (!settings.endpoint) throw new Error("no-endpoint");
-      return isGradioSpace(settings.endpoint) ? callGradio(srcBlob, prompt) : callHFJson(srcBlob, prompt);
+      return isGradioSpace(settings.endpoint) ? callGradio(srcBlob, prompt, onStatus) : callHFJson(srcBlob, prompt, onStatus);
     }
 
-    async function callHFJson(srcBlob, prompt) {
+    async function callHFJson(srcBlob, prompt, onStatus) {
+      if (onStatus) onStatus({ stage: "generating" });
       const base64 = await blobToBase64(srcBlob);
       const headers = { "Content-Type": "application/json", "Accept": "image/png" };
       if (settings.token) headers["Authorization"] = "Bearer " + settings.token;
@@ -1315,7 +1324,7 @@
       }
       return null;
     }
-    async function callGradio(srcBlob, prompt) {
+    async function callGradio(srcBlob, prompt, onStatus) {
       let mod;
       try {
         mod = await import("https://cdn.jsdelivr.net/npm/@gradio/client/+esm");
@@ -1324,6 +1333,7 @@
       }
       const Client = mod.Client, handle_file = mod.handle_file;
       const target = spaceTarget(settings.endpoint);
+      if (onStatus) onStatus({ stage: "connect" });
       const app = await Client.connect(target, settings.token ? { hf_token: settings.token } : {});
       const api = await app.view_api();
       const named = (api && api.named_endpoints) || {};
@@ -1334,32 +1344,76 @@
           if ((named[k].parameters || []).some(gIsImage)) { epName = k; ep = named[k]; break; }
         }
       }
-      if (!ep) throw new Error("Не нашёл API с картинкой у этого Space. Укажите «API name» в настройках (см. на странице Space → Use via API).");
+      if (!ep) throw new Error("Не нашёл API с картинкой у этого Space. Укажите «API name» (Space → Use via API).");
       const params = ep.parameters || [];
       const values = params.map(p => (p.parameter_has_default ? p.parameter_default : null));
       const imgIdx = params.findIndex(gIsImage);
       const txtIdx = params.findIndex(gIsText);
       if (imgIdx >= 0) values[imgIdx] = handle_file(srcBlob);
       if (txtIdx >= 0 && prompt) values[txtIdx] = prompt;
-      const result = await app.predict(epName, values);
-      let url = gFindImage(result && result.data);
-      if (!url) throw new Error("Space не вернул изображение");
+
+      // use submit() so we can surface queue/generation status and cancel
+      const data = await new Promise((resolve, reject) => {
+        let sub, settled = false, timer;
+        const finish = (fn, arg) => { if (settled) return; settled = true; clearTimeout(timer); if (curSubmission === sub) curSubmission = null; fn(arg); };
+        try { sub = app.submit(epName, values); }
+        catch (e) { reject(e); return; }
+        curSubmission = sub;
+        timer = setTimeout(() => { try { sub.cancel(); } catch (e) {} finish(reject, new Error("Таймаут: модель не ответила за 3 минуты")); }, 180000);
+        sub.on("status", (s) => {
+          if (onStatus) onStatus(s);
+          if (s && s.stage === "error") finish(reject, new Error(s.message || "Ошибка на стороне Space"));
+        });
+        sub.on("data", (d) => { finish(resolve, d && d.data); });
+      });
+
+      let url = gFindImage(data);
+      if (!url) throw new Error("Space вернул ответ без картинки: " + JSON.stringify(data).slice(0, 160));
       if (!/^https?:|^data:/.test(url)) {
         const base = /^https?:\/\//.test(target) ? target.replace(/\/$/, "") : "https://" + target.replace(/\//g, "-").toLowerCase() + ".hf.space";
         url = base + (url.charAt(0) === "/" ? "" : "/") + url;
       }
+      if (onStatus) onStatus({ stage: "downloading" });
       const r = await fetch(url);
       if (!r.ok) throw new Error("Не удалось скачать результат: HTTP " + r.status);
       return await r.blob();
     }
 
-    function setOverlay(pageIndex, on, label) {
+    function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+    function statusText(s) {
+      if (!s) return "Обработка…";
+      switch (s.stage) {
+        case "connect": return "Подключение к Space…";
+        case "downloading": return "Загрузка результата…";
+        case "generating": return "Генерация…";
+        case "pending":
+          if (typeof s.position === "number" && s.position > 0) return "В очереди: " + (s.position + 1);
+          if (typeof s.eta === "number" && s.eta > 0) return "Ожидание ~" + Math.ceil(s.eta) + " с";
+          return "В очереди…";
+        default: return "Обработка…";
+      }
+    }
+    function setOverlay(pageIndex, opts) {
       const section = track && track.children[pageIndex];
       if (!section) return;
       const ov = section.querySelector(".proc-overlay");
       if (!ov) return;
-      if (label) { const s = ov.querySelector("span"); if (s) s.textContent = label; }
-      ov.classList.toggle("hidden", !on);
+      if (!opts) { ov.classList.add("hidden"); ov.innerHTML = ""; return; }
+      if (opts.error) {
+        ov.innerHTML = '<div class="proc-msg">⚠️ ' + escapeHtml(opts.error) + '</div><button class="proc-cancel" type="button">Закрыть</button>';
+        ov.querySelector("button").addEventListener("click", () => { ov.classList.add("hidden"); ov.innerHTML = ""; });
+      } else {
+        ov.innerHTML = '<div class="spinner"></div><span>' + escapeHtml(opts.label || "Обработка…") + '</span>' +
+          (opts.cancel ? '<button class="proc-cancel" type="button">Отменить</button>' : "");
+        if (opts.cancel) ov.querySelector(".proc-cancel").addEventListener("click", cancelProcessing);
+      }
+      ov.classList.remove("hidden");
+    }
+    function cancelProcessing() {
+      if (curSubmission) { try { curSubmission.cancel(); } catch (e) {} curSubmission = null; }
+      processing = false;
+      if (track) for (let i = 0; i < track.children.length; i++) setOverlay(i, null);
+      toast("Отменено");
     }
 
     async function applyResult(pageIndex, photo, out) {
@@ -1378,17 +1432,18 @@
       if (!photo) return;
       if (!settings.endpoint) { toast("Сначала укажите эндпоинт HF"); openSettings(); return; }
       processing = true;
-      setOverlay(pageIndex, true, "Обработка…");
+      setOverlay(pageIndex, { label: "Обработка…", cancel: true });
+      const onStatus = (s) => { if (processing) setOverlay(pageIndex, { label: statusText(s), cancel: true }); };
       try {
-        const out = await callHF(photo.src, page.prompt || "");
+        const out = await callHF(photo.src, page.prompt || "", onStatus);
         await applyResult(pageIndex, photo, out);
         toast("Готово ✨");
       } catch (err) {
         console.warn(err);
-        setOverlay(pageIndex, false);
-        toast("Ошибка: " + (err && err.message || err));
+        if (processing) setOverlay(pageIndex, { error: (err && err.message) || String(err) });
       } finally {
         processing = false;
+        curSubmission = null;
       }
     }
 
@@ -1405,19 +1460,21 @@
         const page = state.pages[pi];
         const photo = page.photos[page.selected];
         if (!photo) continue;
-        setOverlay(pi, true, "Обработка " + (n + 1) + "/" + jobs.length);
-        toast("Батч: " + (n + 1) + "/" + jobs.length);
+        setOverlay(pi, { label: (n + 1) + "/" + jobs.length + " · Обработка…", cancel: true });
+        const onStatus = (s) => { if (processing) setOverlay(pi, { label: (n + 1) + "/" + jobs.length + " · " + statusText(s), cancel: true }); };
         try {
-          const out = await callHF(photo.src, page.prompt || "");
+          const out = await callHF(photo.src, page.prompt || "", onStatus);
           await applyResult(pi, photo, out);
           ok++;
         } catch (err) {
           console.warn("batch item failed on page", pi, err);
           failed++;
-          setOverlay(pi, false);
+          setOverlay(pi, { error: (err && err.message) || String(err) });
         }
+        if (!processing) break; // cancelled
       }
       processing = false;
+      curSubmission = null;
       toast("Батч готов: " + ok + "/" + jobs.length + (failed ? " (ошибок " + failed + ")" : ""));
     }
 
